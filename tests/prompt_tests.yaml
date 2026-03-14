@@ -1,0 +1,23 @@
+description: job analyst extraction
+
+providers:
+  - openai:gpt-4.1-mini
+
+prompts:
+  - |
+    Extract tech stack and experience from the following job description:
+
+    {{posting}}
+
+tests:
+  - vars:
+      posting: |
+        We are looking for a Backend Engineer with Python, Docker and AWS.
+        3+ years experience required.
+    assert:
+      - type: contains
+        value: Python
+      - type: contains
+        value: Docker
+      - type: contains
+        value: AWS

@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+
+.env
+jobs.db
+
+.streamlit
+
+.DS_Store
