@@ -2,7 +2,31 @@
 
 AI-powered job intelligence system that collects real-world job postings, analyzes hiring signals using an automated AI pipeline, and ranks personalized job recommendations.
 
-This project demonstrates a data pipeline combining web crawling, AI-based information extraction, and explainable recommendation scoring.
+This project demonstrates a production-style data pipeline combining web crawling, LLM-assisted information extraction, and explainable recommendation scoring.
+
+---
+
+# Demo
+
+## API Documentation
+http://localhost:8000/docs
+
+## Dashboard
+http://localhost:8501
+
+---
+
+# Key Features
+
+- Real-world job posting crawler
+- AI-powered job description analysis
+- Tech stack and experience extraction
+- Skill-based recommendation engine
+- Explainable scoring system
+- REST API built with FastAPI
+- Interactive Streamlit dashboard
+- Docker-based deployment
+- Fault-tolerant AI analysis pipeline
 
 ---
 
@@ -10,13 +34,15 @@ This project demonstrates a data pipeline combining web crawling, AI-based infor
 
 The system automatically:
 
-- Crawls job postings from public recruiting platforms
-- Stores raw job descriptions in a database
-- Extracts structured hiring signals
-- Computes personalized job match scores
-- Returns ranked recommendations through an API and dashboard
+1. Crawls job postings from recruiting platforms  
+2. Stores raw job descriptions in a database  
+3. Extracts structured hiring signals using AI  
+4. Computes personalized job match scores  
+5. Returns ranked recommendations through an API and dashboard  
 
-## Pipeline
+---
+
+# Pipeline
 
 ```
 Job Crawling
@@ -33,35 +59,6 @@ API Response
       ↓
 Interactive Dashboard
 ```
-
----
-
-# Key Features
-
-- Real-world job posting crawler
-- AI-powered job description analysis
-- Tech stack and experience extraction
-- Skill-based recommendation engine
-- Explainable scoring system
-- REST API built with FastAPI
-- Interactive Streamlit dashboard
-- Docker-based deployment
-
----
-
-# Real Data Processing
-
-The crawler collects live job postings from public recruiting platforms.
-
-Example result:
-
-```
-526 job postings collected from Stripe's Greenhouse board
-Batch analysis applied across all collected postings
-AI-powered recommendation scores generated
-```
-
-This enables testing the pipeline on real-world hiring data.
 
 ---
 
@@ -94,15 +91,89 @@ This enables testing the pipeline on real-world hiring data.
 
 ---
 
+# Real Data Processing
+
+The crawler collects live job postings from public recruiting platforms.
+
+Example run:
+
+- 526 job postings collected from Stripe's Greenhouse board
+- Batch analysis applied across all collected postings
+- AI-powered recommendation scores generated
+
+This allows the system to operate on real-world hiring data instead of synthetic datasets.
+
+---
+
+# Recommendation Logic
+
+Recommendation score is calculated using:
+
+```
+match_score =
+    skill_score
+  + language_bonus
+  + visa_bonus
+  + location_bonus
+```
+
+Where:
+
+- `skill_score` = overlap between user skills and job tech stack  
+- `language_bonus` = English work environment detected  
+- `visa_bonus` = visa sponsorship hints detected  
+- `location_bonus` = preferred country match  
+
+Maximum score = **100**
+
+Example recommendation result:
+
+```
+Backend Engineer - Stripe
+
+skill_score: 100
+language_bonus: 10
+visa_bonus: 10
+match_score: 100
+```
+
+---
+
+# AI Analysis Strategy
+
+The system uses a **hybrid extraction approach**.
+
+## Primary
+LLM-based structured extraction.
+
+## Fallback
+Rule-based parser when:
+
+- API rate limits occur
+- invalid responses occur
+- LLM errors occur
+
+Example fallback output:
+
+```
+Rule-based fallback:
+role = Backend Engineer
+tech = python, aws
+```
+
+This ensures the pipeline remains robust and fault tolerant.
+
+---
+
 # API Endpoints
 
 ## Get Stored Jobs
 
-`GET /jobs/`
+```
+GET /jobs/
+```
 
-Returns stored job postings.
-
-Example:
+Example response:
 
 ```json
 {
@@ -116,9 +187,9 @@ Example:
 
 ## Run Job Analysis
 
-`POST /analysis/run`
-
-Runs AI analysis on stored job postings.
+```
+POST /analysis/run
+```
 
 Extracted signals include:
 
@@ -142,7 +213,9 @@ Example:
 
 ## Get Analysis Results
 
-`GET /analysis/`
+```
+GET /analysis/
+```
 
 Returns stored analysis results.
 
@@ -150,9 +223,9 @@ Returns stored analysis results.
 
 ## Get Recommendations
 
-`POST /recommendations/run`
-
-Generates job recommendations based on user profile.
+```
+POST /recommendations/run
+```
 
 Example request:
 
@@ -178,64 +251,15 @@ Example response:
 
 ---
 
-# Recommendation Logic
-
-Recommendation score is calculated using:
-
-```
-match_score =
-    skill_score
-  + language_bonus
-  + visa_bonus
-  + location_bonus
-```
-
-Where:
-
-- `skill_score` = overlap between user skills and job tech stack
-- `language_bonus` = English work environment detected
-- `visa_bonus` = visa sponsorship hints detected
-- `location_bonus` = preferred country match
-
-Maximum score = **100**
-
----
-
-# AI Analysis Strategy
-
-The system uses a hybrid extraction approach.
-
-## Primary
-
-LLM-based structured extraction.
-
-## Fallback
-
-Rule-based parser when:
-
-- API rate limits occur
-- invalid responses occur
-- LLM errors occur
-
-This ensures the pipeline remains robust and fault tolerant.
-
-Example fallback:
-
-```
-Rule-based fallback: role=Backend Engineer, tech=python, aws
-```
-
----
-
 # Dashboard
 
-A lightweight Streamlit dashboard allows interactive exploration of:
+A lightweight **Streamlit dashboard** enables interactive exploration of:
 
 - stored job postings
 - analysis results
 - personalized recommendations
 
-Dashboard features:
+Features:
 
 - skill-based recommendation input
 - job filtering and search
@@ -250,47 +274,52 @@ streamlit run frontend/dashboard.py
 
 ---
 
-# Docker Deployment
+# Tech Stack
 
-The entire system can be launched using Docker Compose.
+## Backend
+- Python
+- FastAPI
+- SQLAlchemy
+- SQLite
 
-```
-docker compose up --build
-```
+## AI
+- OpenAI API
+- LLM structured extraction
 
-Services:
+## Frontend
+- Streamlit
 
-- FastAPI API → http://localhost:8000/docs
-- Streamlit Dashboard → http://localhost:8501
+## Infrastructure
+- Docker
+- Docker Compose
 
 ---
 
-# Installation (Local)
+# Installation
 
-Clone repository:
+## Clone repository
 
-```
+```bash
 git clone https://github.com/yourname/ai-job-scout.git
 cd ai-job-scout
 ```
 
-Create virtual environment:
+## Create virtual environment
 
-```
+```bash
 python -m venv venv
 ```
 
-Activate environment:
+## Activate environment
 
-Windows:
-
-```
+### Windows
+```bash
 venv\Scripts\activate
 ```
 
-Install dependencies:
+## Install dependencies
 
-```
+```bash
 pip install -r requirements.txt
 ```
 
@@ -298,7 +327,7 @@ pip install -r requirements.txt
 
 # Environment Variables
 
-Create `.env` file:
+Create `.env`
 
 ```
 OPENAI_API_KEY=your_api_key_here
@@ -308,29 +337,45 @@ OPENAI_API_KEY=your_api_key_here
 
 # Running the Project
 
-Insert sample jobs (optional):
+## Insert sample jobs (optional)
 
-```
+```bash
 python -m scripts.seed_jobs
 ```
 
-Fetch real job postings:
+## Fetch real job postings
 
-```
+```bash
 python -m scripts.fetch_greenhouse_jobs
 ```
 
-Start API:
+## Start API
 
-```
+```bash
 uvicorn app.main:app --reload
 ```
 
-Start dashboard:
+## Start dashboard
 
-```
+```bash
 streamlit run frontend/dashboard.py
 ```
+
+---
+
+# Docker Deployment
+
+```bash
+docker compose up --build
+```
+
+Services
+
+API  
+http://localhost:8000/docs
+
+Dashboard  
+http://localhost:8501
 
 ---
 
