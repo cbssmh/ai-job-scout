@@ -1,113 +1,70 @@
 # AI Job Scout Agent
 
-AI-powered job intelligence system that collects real-world job postings, analyzes hiring signals using an automated AI pipeline, and ranks personalized job recommendations.
+AI-powered job intelligence system that collects real-world job postings, analyzes hiring signals using an automated AI pipeline, and delivers **explainable, personalized job recommendations** through a modern dashboard.
 
-This project demonstrates a production-style data pipeline combining web crawling, LLM-assisted information extraction, and explainable recommendation scoring.
+This project demonstrates a **production-style AI pipeline + full-stack architecture**, combining web crawling, LLM-assisted extraction, and a React-based dashboard.
 
 ---
 
-# Demo
+# 🚀 Demo
 
 ## API Documentation
+
 http://localhost:8000/docs
 
-## Dashboard
-http://localhost:8501
+## Next.js Dashboard
+
+http://localhost:3000
 
 ---
 
-# Key Features
+# ✨ Key Features
 
-- Real-world job posting crawler
-- AI-powered job description analysis
-- Tech stack and experience extraction
-- Skill-based recommendation engine
-- Explainable scoring system
-- REST API built with FastAPI
-- Interactive Streamlit dashboard
-- Docker-based deployment
-- Fault-tolerant AI analysis pipeline
+* Real-world job posting crawler
+* AI-powered job description analysis (LLM + fallback)
+* Structured hiring signal extraction
+* Skill-based recommendation engine
+* Explainable scoring system
+* FastAPI REST API
+* **Next.js dashboard (Stitch-inspired UI)**
+* Docker-based deployment
+* Fault-tolerant AI pipeline
 
 ---
 
-# Project Overview
+# 🧠 Project Overview
 
 The system automatically:
 
-1. Crawls job postings from recruiting platforms  
-2. Stores raw job descriptions in a database  
-3. Extracts structured hiring signals using AI  
-4. Computes personalized job match scores  
-5. Returns ranked recommendations through an API and dashboard  
+1. Crawls real job postings
+2. Stores raw job data
+3. Extracts structured signals via AI
+4. Computes personalized match scores
+5. Displays ranked recommendations in a modern UI
 
 ---
 
-# Pipeline
+# ⚙️ Architecture
 
 ```
-Job Crawling
-      ↓
-Raw Job Storage
-      ↓
-AI Job Analysis
-      ↓
-Skill Matching
-      ↓
-Recommendation Ranking
-      ↓
-API Response
-      ↓
-Interactive Dashboard
-```
-
----
-
-# System Architecture
-
-```
-             Job Boards
-                 │
-                 ▼
-          Web Crawler Layer
-                 │
-                 ▼
-         Job Storage (SQLite)
-                 │
-                 ▼
-          AI Analysis Pipeline
-          ├─ Job Analyst
-          ├─ Skill Matcher
-          └─ Rule-based Fallback
-                 │
-                 ▼
-        Recommendation Engine
-                 │
-                 ▼
-            FastAPI API
-                 │
-                 ▼
-        Streamlit Dashboard
+Job Boards
+   ↓
+Crawler Layer
+   ↓
+SQLite Database
+   ↓
+AI Analysis Pipeline
+   ↓
+Recommendation Engine
+   ↓
+FastAPI API
+   ↓
+Next.js Dashboard
 ```
 
 ---
 
-# Real Data Processing
-
-The crawler collects live job postings from public recruiting platforms.
-
-Example run:
-
-- 526 job postings collected from Stripe's Greenhouse board
-- Batch analysis applied across all collected postings
-- AI-powered recommendation scores generated
-
-This allows the system to operate on real-world hiring data instead of synthetic datasets.
-
----
-
-# Recommendation Logic
-
-Recommendation score is calculated using:
+# 🧮 Recommendation Logic
 
 ```
 match_score =
@@ -117,99 +74,48 @@ match_score =
   + location_bonus
 ```
 
-Where:
+* Skill match → core score
+* Language → English environment bonus
+* Visa → sponsorship signal
+* Location → user preference match
 
-- `skill_score` = overlap between user skills and job tech stack  
-- `language_bonus` = English work environment detected  
-- `visa_bonus` = visa sponsorship hints detected  
-- `location_bonus` = preferred country match  
-
-Maximum score = **100**
-
-Example recommendation result:
-
-```
-Backend Engineer - Stripe
-
-skill_score: 100
-language_bonus: 10
-visa_bonus: 10
-match_score: 100
-```
+Max score = **100**
 
 ---
 
-# AI Analysis Strategy
+# 🤖 AI Analysis Strategy
 
-The system uses a **hybrid extraction approach**.
+Hybrid approach:
 
 ## Primary
-LLM-based structured extraction.
+
+* LLM-based structured extraction
 
 ## Fallback
-Rule-based parser when:
 
-- API rate limits occur
-- invalid responses occur
-- LLM errors occur
+* Rule-based parser
 
-Example fallback output:
+Ensures robustness under:
 
-```
-Rule-based fallback:
-role = Backend Engineer
-tech = python, aws
-```
-
-This ensures the pipeline remains robust and fault tolerant.
+* API rate limits
+* invalid responses
+* model failures
 
 ---
 
-# API Endpoints
+# 🔌 API Endpoints
 
-## Get Stored Jobs
+## Get Jobs
 
 ```
 GET /jobs/
 ```
 
-Example response:
-
-```json
-{
-  "title": "Backend Engineer",
-  "company": "Stripe",
-  "location": "Remote"
-}
-```
-
----
-
-## Run Job Analysis
+## Run Analysis
 
 ```
 POST /analysis/run
 ```
-
-Extracted signals include:
-
-- role
-- tech stack
-- experience level
-- language requirement
-- visa sponsorship hints
-
-Example:
-
-```json
-{
-  "role": "Backend Engineer",
-  "tech_stack": "python, fastapi, docker, aws",
-  "experience_level": "3+ years"
-}
-```
-
----
 
 ## Get Analysis Results
 
@@ -217,232 +123,143 @@ Example:
 GET /analysis/
 ```
 
-Returns stored analysis results.
-
----
-
-## Get Recommendations
+## Run Recommendations
 
 ```
 POST /recommendations/run
 ```
 
-Example request:
-
-```json
-{
-  "skills": ["Python", "FastAPI", "Docker", "AWS"],
-  "preferred_countries": ["Germany"],
-  "visa_needed": true
-}
-```
-
-Example response:
-
-```json
-{
-  "title": "Backend Engineer",
-  "skill_score": 100,
-  "language_bonus": 10,
-  "visa_bonus": 10,
-  "match_score": 100
-}
-```
-
 ---
 
-# Dashboard
+# 🖥️ Dashboard (Next.js)
 
-A lightweight **Streamlit dashboard** enables interactive exploration of:
+Modern dashboard built with:
 
-- stored job postings
-- analysis results
-- personalized recommendations
+* Next.js
+* React
+* Tailwind CSS
+* Stitch-inspired UI design
 
 Features:
 
-- skill-based recommendation input
-- job filtering and search
-- direct links to original job postings
-- analysis coverage metrics
-
-Run with:
-
-```
-streamlit run frontend/dashboard.py
-```
+* Real-time recommendation execution
+* Match score visualization
+* KPI metrics (avg score, top matches)
+* Skill-based filtering
+* Explainable scoring breakdown
 
 ---
 
-# Tech Stack
+# 🧱 Tech Stack
 
 ## Backend
-- Python
-- FastAPI
-- SQLAlchemy
-- SQLite
+
+* Python
+* FastAPI
+* SQLAlchemy
+* SQLite
 
 ## AI
-- OpenAI API
-- LLM structured extraction
+
+* OpenAI API
+* LLM structured extraction
 
 ## Frontend
-- Streamlit
 
-## Infrastructure
-- Docker
-- Docker Compose
+* Next.js
+* React
+* Tailwind CSS
+
+## Infra
+
+* Docker
+* Docker Compose
 
 ---
 
-# Installation
-
-## Clone repository
+# ⚙️ Installation
 
 ```bash
-git clone https://github.com/yourname/ai-job-scout.git
+git clone https://github.com/cbssmh/ai-job-scout.git
 cd ai-job-scout
 ```
 
-## Create virtual environment
-
 ```bash
 python -m venv venv
-```
-
-## Activate environment
-
-### Windows
-```bash
 venv\Scripts\activate
-```
-
-## Install dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-# Environment Variables
-
-Create `.env`
+# 🔐 Environment Variables
 
 ```
 OPENAI_API_KEY=your_api_key_here
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
 ---
 
-# Running the Project
+# ▶️ Run
 
-## Insert sample jobs (optional)
-
-```bash
-python -m scripts.seed_jobs
-```
-
-## Fetch real job postings
-
-```bash
-python -m scripts.fetch_greenhouse_jobs
-```
-
-## Start API
+## Backend
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-## Start dashboard
+## Frontend
 
 ```bash
-streamlit run frontend/dashboard.py
+cd web
+npm install
+npm run dev
 ```
 
 ---
 
-# Docker Deployment
+# 🐳 Docker
 
 ```bash
 docker compose up --build
 ```
 
-Services
-
-API  
-http://localhost:8000/docs
-
-Dashboard  
-http://localhost:8501
-
 ---
 
-# Project Structure
+# 📁 Structure
 
 ```
-ai-job-scout
-
-app
- ├─ agents
- ├─ crawler
- ├─ api
- ├─ db
- ├─ services
- └─ main.py
-
-frontend
- └─ dashboard.py
-
-scripts
- ├─ seed_jobs.py
- └─ fetch_greenhouse_jobs.py
-
+app/
+web/
+scripts/
 Dockerfile
 docker-compose.yml
-requirements.txt
-README.md
 ```
 
 ---
 
-# Future Improvements
+# 🚀 Future Improvements
 
-Possible extensions:
-
-- multi-agent job analysis system
-- salary prediction
-- automated job application system
-- email or Telegram notifications
-- job market trend analysis
-- improved ranking model
+* search & filtering UI
+* job detail page
+* real-time alerts
+* ranking model upgrade
+* multi-agent analysis
 
 ---
 
-# Learning Outcomes
+# 🎯 What This Project Shows
 
-This project demonstrates:
-
-- API design with FastAPI
-- database modeling with SQLAlchemy
-- web crawling pipelines
-- LLM-assisted information extraction
-- fault-tolerant AI system design
-- explainable recommendation systems
-- containerized deployment with Docker
+* AI pipeline design
+* LLM + rule-based hybrid system
+* real-world data processing
+* full-stack integration
+* explainable recommendation system
+* production-style architecture
 
 ---
 
-# License
+# 📌 Author
 
-MIT License
-
----
-
-# Author
-
-GitHub  
 https://github.com/cbssmh
-
----
