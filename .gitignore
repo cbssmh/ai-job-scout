@@ -1,10 +1,17 @@
+# Python
 venv/
 __pycache__/
 *.pyc
 
+# Environment files
 .env
-jobs.db
+.env.local
 
-.streamlit
+# Node / Next
+node_modules/
+.next/
+out/
 
+# OS / editor
 .DS_Store
+.vscode/
