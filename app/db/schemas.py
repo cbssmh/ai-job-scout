@@ -48,6 +48,7 @@ class RecommendationResponse(BaseModel):
     role: str | None = None
     tech_stack: str | None = None
     skill_score: int
+    similarity_score: int
     language_bonus: int
     visa_bonus: int
     location_bonus: int
