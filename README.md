@@ -1,8 +1,8 @@
 # 🤖 AI Job Scout Agent
 
-AI-powered job intelligence system that collects real-world job postings, analyzes hiring signals using an automated AI pipeline, and delivers **explainable, personalized job recommendations**.
+AI-powered job intelligence system that transforms raw job postings into structured hiring signals and delivers **explainable, personalized, data-driven recommendations**.
 
-This project focuses not only on feature implementation, but also on **system design, refactoring, and maintainable architecture**.
+This project is not only about implementing features, but also about designing a maintainable recommendation system through **refactoring, modular architecture, and explainable scoring**.
 
 ---
 
@@ -16,17 +16,31 @@ http://localhost:3000
 
 ---
 
+# 🎯 Motivation
+
+Most job platforms simply list openings.  
+This project focuses on helping users discover better-fit opportunities through:
+
+- structured job analysis
+- personalized recommendation logic
+- transparent score breakdown
+- maintainable backend architecture
+
+The goal was to build not just a crawler, but a **job intelligence system** that can turn messy job descriptions into explainable recommendation results.
+
+---
+
 # ✨ Key Features
 
 - Real-world job posting crawler
-- AI-powered job description analysis (LLM + fallback)
+- AI-powered job description analysis (LLM + fallback parser)
 - Structured hiring signal extraction
 - Skill-based recommendation engine
 - Explainable scoring system
 - FastAPI REST API
-- **Next.js dashboard (Stitch-inspired UI)**
-- Docker-based deployment
-- Fault-tolerant AI pipeline
+- Next.js dashboard (Stitch-inspired UI)
+- Docker-based local deployment
+- Fault-tolerant AI analysis pipeline
 
 ---
 
@@ -34,31 +48,82 @@ http://localhost:3000
 
 The system automatically:
 
-1. Crawls real job postings  
-2. Stores raw job data  
-3. Extracts structured signals via AI  
-4. Computes personalized match scores  
-5. Displays ranked recommendations  
+1. Crawls real-world job postings
+2. Stores raw job data
+3. Extracts structured hiring signals
+4. Computes personalized match scores
+5. Ranks jobs based on recommendation logic
+6. Displays explainable results through API and dashboard
 
 ---
 
-# ⚙️ Architecture
+# 🔄 Data Flow
 
-```
+This project was designed around a clear data flow from raw input to explainable output.
+
+## Detailed Flow
+
+1. **Crawl job postings** from external job boards
+2. **Store raw posting data** in the database
+3. **Run AI analysis** to extract structured fields
+4. **Normalize extracted signals** for scoring
+5. **Engineer recommendation features**
+6. **Compute weighted match scores**
+7. **Rank and format results**
+8. **Expose explainable recommendations** via API and dashboard
+
+## Data Pipeline
+
+```text
 Job Boards
-↓
+   ↓
 Crawler Layer
-↓
-SQLite Database
-↓
+   ↓
+Raw Job Storage
+   ↓
 AI Analysis Pipeline
-↓
-Recommendation Engine
-↓
+   ↓
+Structured Hiring Signals
+   ↓
+Feature Engineering
+   ↓
+Recommendation Scoring
+   ↓
+Ranking / Response Builder
+   ↓
 FastAPI API
-↓
+   ↓
 Next.js Dashboard
 ```
+
+---
+
+# ⚙️ System Architecture
+
+## High-Level Architecture
+
+```text
+Job Boards
+   ↓
+Crawler Layer
+   ↓
+SQLite Database
+   ↓
+AI Analysis Pipeline
+   ↓
+Recommendation Engine
+   ↓
+FastAPI API
+   ↓
+Next.js Dashboard
+```
+
+## Layered Responsibilities
+
+- **Repository** → database access and query abstraction  
+- **Processing** → parsing, normalization, structured transformation  
+- **Scoring** → recommendation score calculation  
+- **Recommendation** → response construction and ranking output  
 
 ---
 
@@ -66,44 +131,28 @@ Next.js Dashboard
 
 ## Problem
 
-Initially, the recommendation logic was implemented in a single service layer:
+Initially, recommendation logic was implemented inside a single service function.
 
-- data fetching
+That function handled:
+
+- database queries
 - skill matching
 - bonus calculation
 - response building
+- sorting
 
-This caused:
+### Issues
 
-- large change impact when modifying scoring logic  
-- difficulty in testing individual components  
-- tight coupling between business logic  
-- limited scalability  
-
----
-
-## Solution
-
-Refactored the recommendation system into layered architecture:
-
-```
-Repository → Processing → Scoring → Recommendation
-```
-
-### Responsibilities
-
-- **Repository** → database access  
-- **Processing** → data normalization & parsing  
-- **Scoring** → match score calculation  
-- **Recommendation** → response construction  
+- large change impact when modifying scoring rules  
+- low testability of internal logic  
+- tight coupling between responsibilities  
+- poor extensibility for future features  
 
 ---
 
-## Before vs After
+## Before
 
-### ❌ Before
-
-```
+```text
 get_recommendations()
 ├─ DB query
 ├─ skill matching
@@ -112,83 +161,94 @@ get_recommendations()
 └─ sorting
 ```
 
-👉 All logic tightly coupled in one function
+All logic was tightly coupled inside one service-level flow.
 
 ---
 
-### ✅ After
+## After
 
-```
+```text
 service
 ├─ repository
 ├─ scorer
 ├─ builder
 ```
 
-👉 Each responsibility isolated and replaceable
+Each responsibility is isolated and replaceable.
 
 ---
 
-## Key Improvements
+## Refactoring Result
 
-### 1. Separation of Concerns
+The recommendation flow was transformed from a function-driven implementation into a structure-driven architecture.
 
-- scoring logic isolated from service layer  
-- response building separated from business logic  
+### Improvements
 
----
-
-### 2. Testability
-
-Core modules are independently testable:
-
-- `LocationParser`
-- `RecommendationScorer`
-- `RecommendationBuilder`
+- separation of concerns  
+- testability  
+- change isolation  
+- maintainability  
+- future extensibility  
 
 ---
 
-### 3. Reduced Change Impact
+# ✅ Key Engineering Improvements
 
-Before:
+## 1. Separation of Concerns
 
-```
-modify scoring → edit entire service
-```
+Recommendation logic was split into dedicated modules:
 
-After:
-
-```
-modify scoring → edit only scorer module
-```
+- data access  
+- preprocessing  
+- scoring  
+- result building  
 
 ---
 
-### 4. Maintainability
+## 2. Testability
 
-The service layer now acts as an orchestrator:
+Core modules can now be tested independently:
 
-```
+- LocationParser  
+- RecommendationScorer  
+- RecommendationBuilder  
+
+---
+
+## 3. Reduced Change Impact
+
+### Before
+modify scoring → edit entire service  
+
+### After
+modify scoring → edit only scorer module  
+
+---
+
+## 4. Maintainability
+
+Service layer now acts as an orchestrator:
+
+```text
 service → repository → scorer → builder
 ```
 
 ---
 
-## Result
+## 5. Explainability
 
-This refactoring transformed the system from:
+The system provides:
 
-> function-driven implementation
-
-to:
-
-> structure-driven architecture
+- total match score  
+- component-level score breakdown  
+- matched skills  
+- reason-aware ranking  
 
 ---
 
 # 🧮 Recommendation Logic
 
-```
+```text
 match_score =
   skill_score
 + language_bonus
@@ -196,84 +256,114 @@ match_score =
 + location_bonus
 ```
 
-- Skill match → core score  
-- Language → English environment bonus  
-- Visa → sponsorship signal  
-- Location → user preference  
+## Scoring Components
 
-Max score = **100**
+- Skill Score → core relevance between user skills and job requirements  
+- Language Bonus → language-friendly environment  
+- Visa Bonus → sponsorship or authorization signal  
+- Location Bonus → preferred location match  
+
+**Max score = 100**
+
+---
+
+# 🧾 Example Recommendation Output
+
+```json
+{
+  "job_id": 123,
+  "company": "Example Tech",
+  "position": "Backend Developer",
+  "score": 87,
+  "breakdown": {
+    "skill_score": 60,
+    "language_bonus": 10,
+    "visa_bonus": 10,
+    "location_bonus": 7
+  },
+  "matched_skills": ["Python", "FastAPI", "SQL"],
+  "reason": "Strong backend skill match with favorable language and visa conditions."
+}
+```
 
 ---
 
 # 🤖 AI Analysis Strategy
 
-Hybrid approach:
+## Primary Strategy
+- LLM-based structured extraction  
 
-## Primary
-- LLM-based structured extraction
+## Fallback Strategy
+- Rule-based parser  
 
-## Fallback
-- Rule-based parser
+## Why This Design
 
-Ensures robustness under:
+- handles API rate limits  
+- recovers from invalid responses  
+- ensures robustness  
 
-- API rate limits  
-- invalid responses  
-- model failures  
+---
+
+# ⚡ Backend-Focused Design Decisions
+
+## Focus Areas
+
+- modular service orchestration  
+- isolated scoring policy  
+- fault-tolerant AI pipeline  
+- explainable output generation  
+- maintainable data flow  
+
+---
+
+# 📊 Performance & Metrics
+
+```text
+Crawled jobs: N
+Average AI analysis time per job: N sec
+Recommendation latency: N ms
+Fallback success rate: N%
+Duplicate filtering accuracy: N%
+```
 
 ---
 
 # 🔌 API Endpoints
 
-## Get Jobs
-```
-GET /jobs/
-```
-
-## Run Analysis
-```
-POST /analysis/run
-```
-
-## Get Analysis Results
-```
-GET /analysis/
-```
-
-## Run Recommendations
-```
-POST /recommendations/run
+```http
+GET    /jobs/
+POST   /analysis/run
+GET    /analysis/
+POST   /recommendations/run
 ```
 
 ---
 
 # 🖥️ Dashboard (Next.js)
 
-Built with:
+## Built With
 
-- Next.js
-- React
-- Tailwind CSS
+- Next.js  
+- React  
+- Tailwind CSS  
 
-Features:
+## Features
 
 - real-time recommendation execution  
-- match score visualization  
-- KPI metrics (avg score, top matches)  
+- score visualization  
+- KPI metrics  
 - skill-based filtering  
-- explainable scoring breakdown  
+- explainable breakdown  
 
 ---
 
 # 🧪 Testing
 
-After refactoring, core components are independently testable.
-
 ## Covered Modules
 
-- `LocationParser`
-- `RecommendationScorer`
-- `RecommendationBuilder`
+- LocationParser  
+- RecommendationScorer  
+- RecommendationBuilder  
 
 ## Run Tests
 
@@ -281,40 +371,51 @@ After refactoring, core components are independently testable.
 pytest -v
 ```
 
-## Why It Matters
-
-Before:
-
-- recommendation logic was tightly coupled  
-- testing required running entire pipeline  
-
-After:
-
-- each component can be tested independently  
-- faster debugging and safer changes  
-
 ---
 
 # 🧱 Tech Stack
 
 ## Backend
-- Python
-- FastAPI
-- SQLAlchemy
-- SQLite
+- Python  
+- FastAPI  
+- SQLAlchemy  
+- SQLite  
 
 ## AI
-- OpenAI API
-- LLM structured extraction
+- OpenAI API  
+- LLM-based extraction  
 
 ## Frontend
-- Next.js
-- React
-- Tailwind CSS
+- Next.js  
+- React  
+- Tailwind CSS  
 
 ## Infra
-- Docker
-- Docker Compose
+- Docker  
+- Docker Compose  
+
+---
+
+# 📁 Project Structure
+
+```text
+app/
+├─ api/
+├─ core/
+├─ models/
+├─ repositories/
+├─ services/
+├─ scorers/
+├─ builders/
+├─ parsers/
+└─ main.py
+
+web/
+tests/
+scripts/
+Dockerfile
+docker-compose.yml
+```
 
 ---
 
@@ -334,7 +435,7 @@ pip install -r requirements.txt
 
 # 🔐 Environment Variables
 
-```
+```env
 OPENAI_API_KEY=your_api_key_here
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
@@ -344,11 +445,13 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 # ▶️ Run
 
 ## Backend
+
 ```bash
 uvicorn app.main:app --reload
 ```
 
 ## Frontend
+
 ```bash
 cd web
 npm install
@@ -365,68 +468,35 @@ docker compose up --build
 
 ---
 
-# 📁 Structure
-
-```
-app/
-web/
-tests/
-scripts/
-Dockerfile
-docker-compose.yml
-```
-
----
-
 # 🧠 Engineering Decisions
 
-## Why refactor the recommendation system?
-
-The goal was not to add features, but to improve system structure.
-
-Key focus:
+## Why Refactor?
 
 - reduce coupling  
 - isolate change points  
 - improve testability  
-- make the system explainable  
+- enable explainable scoring  
 
----
+## Key Design
 
-## Key Design Decision
-
-Separated recommendation logic into:
-
-- Scoring (evaluation)
-- Recommendation (selection & presentation)
-
-This allows:
-
-- flexible policy changes  
-- clear reasoning for recommendations  
-- independent testing  
-
----
-
-## Takeaway
-
-This project demonstrates not only feature implementation, but:
-
-> the ability to identify structural problems and refactor toward a scalable architecture
+- **Scoring** → evaluation logic  
+- **Recommendation** → output logic  
 
 ---
 
 # 🚀 Future Improvements
 
-- search & filtering UI  
+- advanced search UI  
 - job detail page  
 - real-time alerts  
-- ranking model upgrade (ML-based)  
-- embedding-based similarity search  
-- multi-agent analysis pipeline  
+- embedding-based search  
+- ANN optimization  
+- multi-agent pipeline  
+- PostgreSQL migration  
+- async queue processing  
 
 ---
 
 # 📌 Author
 
-https://github.com/cbssmh
+GitHub: https://github.com/cbssmh
