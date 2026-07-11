@@ -152,6 +152,34 @@ Each recommendation explains:
 - Next.js dashboard for running recommendations and reviewing results
 - Docker Compose support for local API and dashboard runtime
 
+
+## Optional: NVIDIA NIM Provider
+
+This project can use NVIDIA-hosted NIM models through an OpenAI-compatible API.
+
+1. Create a `.env` file from `.env.example`.
+2. Set the provider and API key:
+
+```env
+LLM_PROVIDER=nvidia
+NVIDIA_API_KEY=nvapi-your-key-here
+NVIDIA_MODEL=z-ai/glm-5.2
+```
+
+3. Run a quick API smoke test:
+
+```bash
+python scripts/test_nvidia_api.py
+```
+
+4. Run job analysis as usual:
+
+```bash
+curl -X POST "http://localhost:8000/analysis/run?limit=5"
+```
+
+The backend keeps the same OpenAI SDK interface and only switches `base_url`, API key, and model through environment variables. This keeps AI Job Scout independent from a single LLM provider.
+
 ## API Examples
 
 ### Health Check
