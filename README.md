@@ -1,118 +1,81 @@
-<h1 align="center">AI Job Scout</h1>
+# AI Job Scout
 
-<p align="center">
 Backend-focused job intelligence system that turns raw software engineering job postings into structured analysis and explainable recommendations.
-</p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11-blue" alt="Python 3.11" />
-  <img src="https://img.shields.io/badge/FastAPI-Backend-009688" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/Docker-Ready-2496ED" alt="Docker" />
-  <img src="https://img.shields.io/badge/OpenAI%20API-LLM%20Extraction-111111" alt="OpenAI API" />
-  <img src="https://img.shields.io/badge/SQLAlchemy-ORM-red" alt="SQLAlchemy" />
-  <img src="https://img.shields.io/badge/License-MIT-lightgrey" alt="MIT License" />
-</p>
+![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED)
+![NVIDIA NIM](https://img.shields.io/badge/NVIDIA%20NIM-LLM%20Extraction-76B900)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
-AI Job Scout is built as a production-minded FastAPI backend, not a single-purpose crawler. It separates ingestion, AI extraction, persistence, scoring, and response formatting so each part of the system can be tested and changed independently.
+## Project Overview
 
-**Core stack:** Python 3.11, FastAPI, SQLAlchemy, SQLite, OpenAI API, Docker, Next.js
+AI Job Scout is a personal portfolio project that demonstrates backend architecture, job ingestion, LLM-assisted structured extraction, and deterministic recommendation scoring. It is built around a FastAPI backend with SQLAlchemy persistence, a Greenhouse crawler, a lightweight LLM provider boundary, and a dashboard for reviewing recommendations.
 
-**Backend and system focus:**
+The project is intentionally scoped as an honest portfolio application, not a paid multi-provider production platform.
 
-- Modular FastAPI backend with clear API, service, repository, scoring, and builder layers
-- AI-assisted job analysis with deterministic fallback parsing
-- Explainable recommendation scoring with visible score components
-- Repository/service/scoring architecture designed for maintainability
-- Raw and processed job data stored separately for re-analysis and auditability
-- Focused unit tests for scoring, parsing, and recommendation building
-- Dockerized local runtime with API and dashboard entry points
+## Why This Project Exists
 
-## Highlights
+Job recommendations are only useful when the user can understand why a role was recommended. This project separates the uncertain part of the system from the explainable part:
 
-For fast technical review:
+**The LLM is used for semantic extraction, while recommendation scoring remains deterministic and explainable.**
 
-| Area | What to Look For |
+That boundary keeps model output useful without allowing model variability to control the final ranking logic.
+
+## Design Principles
+
+| Principle | Implementation |
 | --- | --- |
-| Backend architecture | Thin FastAPI routes delegate to services, repositories, scorers, and builders |
-| Reliability | LLM extraction is wrapped with a rule-based fallback parser |
-| Explainability | Recommendations include skill, language, visa, and location score components |
-| Maintainability | Scoring policy is isolated in `RecommendationScorer` |
-| Testability | Core logic is testable without external APIs or database-heavy flows |
-| Data modeling | Raw job postings and derived analysis are stored in separate tables |
-| Portfolio signal | Demonstrates backend design, AI integration, ranking logic, and API delivery |
+| Semantic extraction only | The LLM extracts role, technologies, experience level, language requirement, visa signal, and summary from raw job text. |
+| Deterministic scoring | `RecommendationScorer` calculates score components from structured analysis and user preferences. |
+| Explainability over opacity | API responses include skill, language, visa, and location score components plus a readable reason. |
+| Lightweight provider boundary | Provider selection is environment-variable based and limited to the configured OpenAI-compatible providers. |
+| No automatic paid fallback | The app does not silently route to paid providers when NVIDIA is unavailable. That trade-off is intentional for a personal project. |
 
-## Screenshots
-
-<p align="center">
-  <img src="docs/screenshots/dashboard-overview.png" alt="AI Job Scout dashboard metrics and top recommendation summary" width="900" />
-</p>
-
-<p align="center"><em>Dashboard metrics and recommendation summary.</em></p>
-
-<p align="center">
-  <img src="docs/screenshots/recommendation-results.png" alt="Ranked recommendation results with score breakdown" width="900" />
-</p>
-
-<p align="center"><em>Ranked recommendation cards with match score, skill score, and bonus breakdowns.</em></p>
-
-<p align="center">
-  <img src="docs/screenshots/api-docs.png" alt="FastAPI Swagger UI route groups for jobs analysis and recommendations" width="900" />
-</p>
-
-<p align="center"><em>FastAPI route structure exposed through Swagger UI.</em></p>
-
-## System Architecture
+## Architecture
 
 ```mermaid
-flowchart LR
-    A["Job Boards"] --> B["Crawler"]
-    B --> C["Raw Jobs"]
-    C --> D["AI Analysis"]
-    D --> E{"Valid JSON?"}
-    E -- yes --> F["Structured Signals"]
-    E -- no --> G["Fallback Parser"]
-    G --> F
-    F --> H["Repository"]
-    H --> I["Scorer"]
-    I --> J["API Response"]
-    J --> K["Dashboard / Client"]
+flowchart TD
+    A["Job Sources / Greenhouse"] --> B["Crawler and Normalization"]
+    B --> C["Database and Job Lifecycle"]
+    C --> D["LLM Job Analysis"]
+    N["NVIDIA NIM<br/>OpenAI-compatible API"] -.-> D
+    O["OpenAI Provider<br/>Optional configured provider"] -.-> D
+    D --> E["Structured Analysis"]
+    E --> F["Deterministic Recommendation Scoring"]
+    F --> G["FastAPI"]
+    G --> H["Dashboard / Client"]
 ```
 
-The important boundary is intentional: AI extraction produces structured signals, while deterministic scoring ranks jobs. This keeps model variability out of the final scoring contract.
+The NVIDIA integration sits behind the same OpenAI-compatible client interface used by the existing provider. The provider layer is deliberately small: it validates the configured provider, API key, base URL, and model, then returns a client configuration for the job analyst.
 
-## Backend Architecture
+## Core Features
 
-```text
-FastAPI routes
-    -> service orchestration
-        -> repositories
-        -> domain context objects
-        -> scoring policy
-        -> response builder
-```
+- Greenhouse job ingestion and normalization
+- Job lifecycle handling with duplicate/update detection
+- SQLAlchemy models for raw jobs and derived analysis
+- LLM-assisted structured job analysis
+- Rule-based fallback parsing for runtime LLM or JSON failures
+- Deterministic recommendation scoring with visible score components
+- FastAPI REST API and Swagger UI
+- Dashboard/client for reviewing recommendations
+- Docker Compose development environment
+- Focused pytest suite for scoring, parsing, lifecycle, and provider configuration
 
-| Layer | Responsibility | Key Files |
-| --- | --- | --- |
-| API | HTTP routes, schemas, dependency injection | `app/api/`, `app/main.py` |
-| Services | Application workflow orchestration | `app/services/recommend_service.py` |
-| Repositories | SQLAlchemy query isolation | `app/repository/` |
-| Domain | Typed recommendation context and score objects | `app/domain/` |
-| Scoring | Deterministic matching and bonus rules | `app/scoring/recommendation_scorer.py` |
-| AI analysis | LLM extraction and fallback parser | `app/agents/job_analyst.py` |
-| Presentation | API-ready recommendation shape | `app/recommendation/recommendation_builder.py` |
-
-## Recommendation Pipeline
+## Explainable Recommendation Flow
 
 ```text
-Job + Analysis
+Raw job posting
+    -> LLM semantic extraction
+    -> Structured job analysis
     -> RecommendationContext
     -> RecommendationScorer
     -> ScoreBreakdown
     -> RecommendationBuilder
-    -> ranked API response
+    -> Ranked API response
 ```
 
-Scoring is intentionally readable:
+Current score formula:
 
 ```text
 match_score =
@@ -122,93 +85,151 @@ match_score =
 + location_bonus
 ```
 
-The final score is capped at `100`.
+The final score is capped at `100`. The response keeps the score components separate so the recommendation can be inspected without guessing how the ranking was produced.
 
-Each recommendation explains:
+## LLM Provider Design
 
-- `skill_score`: match between user skills and extracted job technologies
-- `language_bonus`: English-language compatibility signal
-- `visa_bonus`: sponsorship signal when the user needs a visa
-- `location_bonus`: country preference match
-- `reason`: human-readable score explanation
+The default development setup uses NVIDIA NIM while free access is available. NVIDIA access is not assumed to remain free permanently.
 
-## Why This Project Matters
+Configuration remains environment-variable based:
 
-| Principle | Backend Value |
+- `LLM_PROVIDER=nvidia`
+- `NVIDIA_API_KEY`
+- `NVIDIA_BASE_URL`
+- `NVIDIA_MODEL`
+
+The provider layer is intentionally lightweight and does not implement automatic paid fallback routing. If NVIDIA access ends, the intended next step is to swap the configured provider or evaluate a local/free model path, not to add production-style routing complexity.
+
+Supported configured providers:
+
+- `nvidia`
+- `openai`
+
+Unsupported provider names raise a clear configuration error.
+
+## Tech Stack
+
+| Area | Tools |
 | --- | --- |
-| Explainable scoring | Rankings expose score components instead of hiding decisions behind a single number |
-| Fallback parsing | LLM failures degrade analysis quality without stopping the pipeline |
-| AI/scoring separation | The model extracts signals; backend code owns deterministic ranking behavior |
+| Backend | Python 3.11+, FastAPI, Pydantic, Uvicorn |
+| Database | SQLite, SQLAlchemy |
+| LLM integration | OpenAI Python SDK, NVIDIA NIM OpenAI-compatible API |
+| Crawling | Greenhouse job source integration |
+| Frontend/dashboard | Next.js, React, TypeScript, Streamlit dashboard entry point |
+| Local runtime | Docker, Docker Compose |
+| Testing | pytest |
 
-## Key Features
+## Demo / Screenshots
 
-- Greenhouse job ingestion with duplicate-tolerant insertion
-- Raw posting storage with SQLAlchemy models
-- LLM-based structured extraction for role, tech stack, seniority, language, visa, and summary
-- Rule-based fallback analysis for operational resilience
-- User-profile recommendation input: skills, preferred countries, visa requirement
-- Sorted recommendation output with score breakdown and explanation
-- FastAPI Swagger documentation
-- Next.js dashboard for running recommendations and reviewing results
-- Docker Compose support for local API and dashboard runtime
+These screenshots are checked into the repository and reflect the current local demo UI/API.
 
+![Dashboard overview](docs/screenshots/dashboard-overview.png)
 
-## Optional: NVIDIA NIM Provider
+![Recommendation results](docs/screenshots/recommendation-results.png)
 
-This project can use NVIDIA-hosted NIM models through an OpenAI-compatible API.
+![FastAPI Swagger UI](docs/screenshots/api-docs.png)
 
-1. Create a `.env` file from `.env.example`.
-2. Set the provider and API key:
+Useful local routes for refreshing screenshots:
+
+- Dashboard: `http://localhost:8501`
+- API docs: `http://localhost:8000/docs`
+- Health check: `http://localhost:8000/health`
+
+## Installation
+
+Python 3.11+ is required.
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+The repository currently uses an unpinned `requirements.txt`. That keeps setup simple for portfolio review, but it means dependency versions can drift over time.
+
+## Environment Variables
+
+Create a local `.env` file from the example:
+
+```bash
+cp .env.example .env
+```
+
+NVIDIA NIM development setup:
 
 ```env
 LLM_PROVIDER=nvidia
-NVIDIA_API_KEY=nvapi-your-key-here
+NVIDIA_API_KEY=your_nvidia_api_key_here
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
 NVIDIA_MODEL=z-ai/glm-5.2
 ```
 
-3. Run a quick API smoke test:
+Optional OpenAI setup:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+`.env` and `.venv/` are ignored by Git. `.env.example` is tracked and should contain placeholders only.
+
+## Running the Application
+
+Run the API locally:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Run with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+API:
+
+```text
+http://localhost:8000
+```
+
+Dashboard:
+
+```text
+http://localhost:8501
+```
+
+Optional Next.js client:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+```text
+http://localhost:3000
+```
+
+Optional NVIDIA smoke test:
 
 ```bash
 python scripts/test_nvidia_api.py
 ```
 
-4. Run job analysis as usual:
-
-```bash
-curl -X POST "http://localhost:8000/analysis/run?limit=5"
-```
-
-The backend keeps the same OpenAI SDK interface and only switches `base_url`, API key, and model through environment variables. This keeps AI Job Scout independent from a single LLM provider.
+The smoke test is manual and should only be run when `NVIDIA_API_KEY` is configured locally.
 
 ## API Examples
 
-### Health Check
+Health check:
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-```json
-{
-  "status": "ok",
-  "service": "ai-job-scout-api"
-}
-```
-
-### Database Health Check
-
-```bash
-curl http://localhost:8000/health/db
-```
-
-```json
-{
-  "status": "ok",
-  "database": "connected"
-}
-```
-
-### Create a Job
+Create a job:
 
 ```bash
 curl -X POST http://localhost:8000/jobs/ \
@@ -224,13 +245,13 @@ curl -X POST http://localhost:8000/jobs/ \
   }'
 ```
 
-### Run Analysis
+Run analysis:
 
 ```bash
 curl -X POST "http://localhost:8000/analysis/run?limit=20"
 ```
 
-### Run Recommendations
+Run recommendations:
 
 ```bash
 curl -X POST http://localhost:8000/recommendations/run \
@@ -242,7 +263,7 @@ curl -X POST http://localhost:8000/recommendations/run \
   }'
 ```
 
-Example response:
+Example recommendation shape:
 
 ```json
 [
@@ -253,6 +274,7 @@ Example response:
     "role": "Backend Engineer",
     "tech_stack": "Python, FastAPI, Docker",
     "skill_score": 100,
+    "similarity_score": 0,
     "language_bonus": 10,
     "visa_bonus": 10,
     "location_bonus": 10,
@@ -263,16 +285,15 @@ Example response:
 ]
 ```
 
-## Tech Stack
+## Testing
 
-| Category | Technologies |
-| --- | --- |
-| Backend | Python 3.11, FastAPI, Pydantic, Uvicorn |
-| Database | SQLite, SQLAlchemy |
-| AI processing | OpenAI API, structured JSON extraction, rule-based fallback parsing |
-| Frontend | Next.js, React, TypeScript, Tailwind CSS |
-| Infrastructure | Docker, Docker Compose |
-| Testing | Pytest |
+Run the test suite:
+
+```bash
+python -m pytest
+```
+
+Current coverage focuses on deterministic scoring, recommendation building, job lifecycle behavior, location parsing, health routes, and LLM provider configuration. Tests mock provider setup and do not make live paid or NVIDIA API calls.
 
 ## Project Structure
 
@@ -280,187 +301,51 @@ Example response:
 app/
 |-- agents/          # LLM analysis and skill matching helpers
 |-- api/             # FastAPI routers
-|-- crawler/         # External job source integrations
+|-- crawler/         # Greenhouse integration
 |-- db/              # SQLAlchemy models, session setup, Pydantic schemas
-|-- domain/          # Recommendation domain dataclasses
+|-- domain/          # Recommendation and lifecycle domain models
+|-- llm/             # Lightweight provider boundary
 |-- processing/      # Parsing and normalization utilities
 |-- recommendation/  # Recommendation response construction
-|-- repository/      # Data access abstraction
-|-- scoring/         # Recommendation scoring policy
+|-- repository/      # Data access isolation
+|-- scoring/         # Deterministic recommendation scoring policy
 |-- services/        # Application orchestration
 `-- main.py          # FastAPI entry point
 
 scripts/
-`-- fetch_greenhouse_jobs.py
+|-- fetch_greenhouse_jobs.py
+|-- seed_jobs.py
+`-- test_nvidia_api.py
 
 tests/
-|-- test_location_parser.py
-|-- test_recommendation_builder.py
-`-- test_recommendation_scorer.py
+`-- focused unit and route tests
 
 web/
-|-- app/
-`-- src/
+`-- Next.js dashboard/client
 ```
 
-## Engineering Notes
+## Design Decisions and Trade-offs
 
-| Decision | Implementation |
-| --- | --- |
-| Repository/service/scoring separation | Repositories load data, services orchestrate workflow, scorers calculate ranking semantics, builders format responses |
-| Fallback handling | `analyze_job_text()` attempts structured LLM extraction, then uses `analyze_job_text_rule_based()` when the model call or JSON parsing fails |
-| Testable core logic | `RecommendationScorer`, `RecommendationBuilder`, and `LocationParser` are isolated from HTTP and external API calls |
+- The app keeps LLM analysis and recommendation scoring separate so ranking behavior remains inspectable.
+- Provider selection uses environment variables instead of runtime model routing.
+- NVIDIA NIM is the practical default while free access is available, but the code does not depend on NVIDIA-specific business logic outside the provider boundary.
+- Rule-based fallback is used for analysis resilience, but provider misconfiguration raises clear errors.
+- Dependencies are not pinned yet; this is acceptable for a small portfolio app but is a reproducibility trade-off.
 
-This keeps scoring changes from affecting routes or SQL queries, and keeps external AI failure from stopping the recommendation pipeline.
+## Current Limitations
 
-## Docs
+- SQLite is used for local development, not multi-user production scale.
+- Recommendation scoring is deterministic and explainable, but still simple.
+- The dashboard is a demo/review surface, not a polished commercial frontend.
+- No automatic paid provider fallback is implemented by design.
+- Live NVIDIA access depends on externally available credentials and service availability.
 
-Recommended deeper documentation:
+## Future Considerations
 
-- `docs/architecture.md` - service boundaries, data flow, and module ownership
-- `docs/scoring-system.md` - scoring rules, examples, and future weighting strategy
-- `docs/api-design.md` - endpoint contracts, request/response models, and error handling
+- Evaluate a local Ollama provider if NVIDIA free access ends.
+- Migrate Pydantic class `Config` usage to `ConfigDict`.
+- Review dependency pinning for more reproducible environments.
 
-## Setup
+## License
 
-### Prerequisites
-
-- Python 3.11
-- Node.js 20 or newer
-- Docker and Docker Compose, optional
-- OpenAI API key, optional for LLM-backed analysis
-
-### Backend
-
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-API docs:
-
-```text
-http://localhost:8000/docs
-```
-
-### Environment
-
-```env
-OPENAI_API_KEY=your_openai_api_key
-```
-
-### Fetch Jobs
-
-```bash
-python scripts/fetch_greenhouse_jobs.py
-```
-
-### Analyze Jobs
-
-```bash
-curl -X POST "http://localhost:8000/analysis/run?limit=20"
-```
-
-### Run Tests
-
-```bash
-pytest -q
-```
-
-Use Python 3.11. The codebase uses modern type syntax such as `str | None`.
-
-### Next.js Dashboard
-
-```bash
-cd web
-npm install
-npm run dev
-```
-
-```text
-http://localhost:3000
-```
-
-Optional frontend environment variable:
-
-```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-```
-
-### Docker Compose
-
-```bash
-docker compose up --build
-```
-
-Docker Compose starts:
-
-- FastAPI API at `http://localhost:8000`
-- Streamlit dashboard at `http://localhost:8501`
-
-The Next.js dashboard runs separately from `web/`.
-
-## Operations
-
-### API Health Check
-
-```bash
-curl http://localhost:8000/health
-```
-
-### DB Health Check
-
-```bash
-curl http://localhost:8000/health/db
-```
-
-### Docker Health Status
-
-```bash
-docker compose ps
-```
-
-The API container uses Docker Compose healthcheck to call `/health` from inside the container.
-
-### Docker Logs
-
-```bash
-docker compose logs -f api
-docker compose logs -f dashboard
-```
-
-The API, crawler, analysis batch, and recommendation flow use Python structured logging with timestamp, log level, logger name, and message.
-
-### Local SQLite Schema Changes
-
-This project uses `Base.metadata.create_all()` for local development and does not include Alembic migrations yet.
-
-When DB model fields change, an existing local `jobs.db` may not match the current schema. In that case, remove the local database and recreate it by fetching or seeding jobs again:
-
-```bash
-rm jobs.db
-python scripts/fetch_greenhouse_jobs.py
-```
-
-Use this only for local development data. Do not use this approach for a production database.
-
-### Phase 2 Lifecycle Verification
-
-```bash
-python scripts/verify_phase2.py
-```
-
-The verification script uses an isolated temporary SQLite database and does not modify the local `jobs.db`.
-
-## Future Improvements
-
-- Add Alembic migrations
-- Move persistence from SQLite to PostgreSQL
-- Add background jobs for crawling and analysis
-- Add structured logging and retry policies around external APIs
-- Store analysis status and fallback metadata as first-class fields
-- Add embedding-based semantic similarity alongside deterministic scoring
-- Expand integration tests with a temporary test database
-- Add pagination, filtering, and ordering to list endpoints
+MIT License. See [LICENSE](LICENSE).

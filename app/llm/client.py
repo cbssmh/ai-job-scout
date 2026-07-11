@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from openai import OpenAI
 
-from app.config import settings
+from app.config import Settings, settings
 
 
 @dataclass(frozen=True)
@@ -12,7 +12,15 @@ class LLMClientConfig:
     client: OpenAI
 
 
-def get_llm_client_config() -> LLMClientConfig:
+def _require_config_value(value: str | None, name: str, provider: str) -> str:
+    if not value or not value.strip():
+        raise ValueError(
+            f"{name} is missing. Set {name} in .env before using the {provider} provider."
+        )
+    return value.strip()
+
+
+def get_llm_client_config(config: Settings | None = None) -> LLMClientConfig:
     """
     Build an OpenAI-compatible chat client for the configured provider.
 
@@ -22,29 +30,54 @@ def get_llm_client_config() -> LLMClientConfig:
 
     The rest of the application can keep using the same chat.completions API.
     """
-    provider = settings.llm_provider.lower().strip()
+    config = config or settings
+    provider = config.llm_provider.lower().strip()
 
     if provider == "nvidia":
-        if not settings.nvidia_api_key:
-            raise ValueError("NVIDIA_API_KEY is required when LLM_PROVIDER=nvidia")
+        api_key = _require_config_value(
+            config.nvidia_api_key,
+            "NVIDIA_API_KEY",
+            "NVIDIA",
+        )
+        model = _require_config_value(
+            config.nvidia_model,
+            "NVIDIA_MODEL",
+            "NVIDIA",
+        )
+        base_url = _require_config_value(
+            config.nvidia_base_url,
+            "NVIDIA_BASE_URL",
+            "NVIDIA",
+        )
 
         return LLMClientConfig(
             provider="nvidia",
-            model=settings.nvidia_model,
+            model=model,
             client=OpenAI(
-                base_url=settings.nvidia_base_url,
-                api_key=settings.nvidia_api_key,
+                base_url=base_url,
+                api_key=api_key,
             ),
         )
 
     if provider == "openai":
-        if not settings.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+        api_key = _require_config_value(
+            config.openai_api_key,
+            "OPENAI_API_KEY",
+            "OpenAI",
+        )
+        model = _require_config_value(
+            config.openai_model,
+            "OPENAI_MODEL",
+            "OpenAI",
+        )
 
         return LLMClientConfig(
             provider="openai",
-            model=settings.openai_model,
-            client=OpenAI(api_key=settings.openai_api_key),
+            model=model,
+            client=OpenAI(api_key=api_key),
         )
 
-    raise ValueError(f"Unsupported LLM_PROVIDER: {settings.llm_provider}")
+    raise ValueError(
+        f"Unsupported LLM_PROVIDER '{config.llm_provider}'. "
+        "Set LLM_PROVIDER to one of: openai, nvidia."
+    )

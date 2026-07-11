@@ -1,5 +1,5 @@
 import json
-from app.llm.client import get_llm_client_config
+from app.llm.client import LLMClientConfig, get_llm_client_config
 
 SYSTEM_PROMPT = """
 You are a job posting analysis assistant.
@@ -23,8 +23,7 @@ Rules:
 """
 
 
-def _create_chat_completion(messages: list[dict[str, str]]):
-    llm = get_llm_client_config()
+def _create_chat_completion(llm: LLMClientConfig, messages: list[dict[str, str]]):
     return llm.client.chat.completions.create(
         model=llm.model,
         messages=messages,
@@ -134,8 +133,11 @@ Job description:
 Return JSON only.
 """
 
+    llm = get_llm_client_config()
+
     try:
         response = _create_chat_completion(
+            llm,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
