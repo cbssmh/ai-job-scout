@@ -157,12 +157,26 @@ Each recommendation explains:
 ### Health Check
 
 ```bash
-curl http://localhost:8000/
+curl http://localhost:8000/health
 ```
 
 ```json
 {
-  "message": "AI Job Scout Agent is running"
+  "status": "ok",
+  "service": "ai-job-scout-api"
+}
+```
+
+### Database Health Check
+
+```bash
+curl http://localhost:8000/health/db
+```
+
+```json
+{
+  "status": "ok",
+  "database": "connected"
 }
 ```
 
@@ -359,6 +373,58 @@ Docker Compose starts:
 - Streamlit dashboard at `http://localhost:8501`
 
 The Next.js dashboard runs separately from `web/`.
+
+## Operations
+
+### API Health Check
+
+```bash
+curl http://localhost:8000/health
+```
+
+### DB Health Check
+
+```bash
+curl http://localhost:8000/health/db
+```
+
+### Docker Health Status
+
+```bash
+docker compose ps
+```
+
+The API container uses Docker Compose healthcheck to call `/health` from inside the container.
+
+### Docker Logs
+
+```bash
+docker compose logs -f api
+docker compose logs -f dashboard
+```
+
+The API, crawler, analysis batch, and recommendation flow use Python structured logging with timestamp, log level, logger name, and message.
+
+### Local SQLite Schema Changes
+
+This project uses `Base.metadata.create_all()` for local development and does not include Alembic migrations yet.
+
+When DB model fields change, an existing local `jobs.db` may not match the current schema. In that case, remove the local database and recreate it by fetching or seeding jobs again:
+
+```bash
+rm jobs.db
+python scripts/fetch_greenhouse_jobs.py
+```
+
+Use this only for local development data. Do not use this approach for a production database.
+
+### Phase 2 Lifecycle Verification
+
+```bash
+python scripts/verify_phase2.py
+```
+
+The verification script uses an isolated temporary SQLite database and does not modify the local `jobs.db`.
 
 ## Future Improvements
 

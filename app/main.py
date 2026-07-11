@@ -1,14 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.logging_config import configure_logging
 from app.db.database import Base, engine
+from app.api.routes_health import router as health_router
 from app.api.routes_jobs import router as jobs_router
 from app.api.routes_recommend import router as analysis_router
 from app.api.routes_recommendations import router as recommendations_router
+
+configure_logging()
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI Job Scout Agent")
 
+app.include_router(health_router)
 app.include_router(jobs_router)
 app.include_router(analysis_router)
 app.include_router(recommendations_router)

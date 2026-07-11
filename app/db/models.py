@@ -14,6 +14,11 @@ class Job(Base):
     url = Column(String, nullable=False, unique=True)
     description_raw = Column(Text, nullable=False)
     posted_at = Column(String, nullable=True)
+    content_hash = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="ACTIVE")
+    first_seen_at = Column(DateTime, default=datetime.utcnow)
+    last_seen_at = Column(DateTime, default=datetime.utcnow)
+    last_analyzed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 from sqlalchemy import ForeignKey

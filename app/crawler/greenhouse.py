@@ -1,6 +1,9 @@
+import logging
+
 import requests
 
 BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
+logger = logging.getLogger(__name__)
 
 TARGET_KEYWORDS = [
     "engineer",
@@ -17,14 +20,15 @@ TARGET_KEYWORDS = [
 
 
 def fetch_greenhouse_jobs(board_token: str):
-    print(f"[crawler] start board={board_token}")
+    logger.info("greenhouse crawl started board=%s", board_token)
 
     url = f"{BASE_URL}/{board_token}/jobs?content=true"
     response = requests.get(url, timeout=15)
     response.raise_for_status()
 
     data = response.json()
-    print(f"[crawler] raw jobs count={len(data.get('jobs', []))}")
+    raw_count = len(data.get("jobs", []))
+    logger.info("greenhouse crawl fetched board=%s raw_count=%s", board_token, raw_count)
 
     jobs = []
 
@@ -35,7 +39,7 @@ def fetch_greenhouse_jobs(board_token: str):
         if not any(keyword in title_lower for keyword in TARGET_KEYWORDS):
             continue
 
-        print(f"[crawler] parsing {i}: {title}")
+        logger.debug("greenhouse crawl parsing board=%s index=%s title=%s", board_token, i, title)
 
         jobs.append({
             "source": "greenhouse",
@@ -47,5 +51,10 @@ def fetch_greenhouse_jobs(board_token: str):
             "posted_at": None,
         })
 
-    print(f"[crawler] finished board={board_token}")
+    logger.info(
+        "greenhouse crawl finished board=%s matched_count=%s skipped_count=%s",
+        board_token,
+        len(jobs),
+        raw_count - len(jobs),
+    )
     return jobs

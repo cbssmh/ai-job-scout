@@ -21,6 +21,11 @@ class JobResponse(BaseModel):
     url: str
     description_raw: str
     posted_at: str | None = None
+    content_hash: str | None = None
+    status: str = "ACTIVE"
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    last_analyzed_at: datetime | None = None
     created_at: datetime
 
     class Config:

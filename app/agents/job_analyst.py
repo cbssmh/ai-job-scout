@@ -2,8 +2,6 @@ import json
 from openai import OpenAI
 from app.config import settings
 
-client = OpenAI(api_key=settings.openai_api_key)
-
 SYSTEM_PROMPT = """
 You are a job posting analysis assistant.
 
@@ -24,6 +22,10 @@ Rules:
 - visa_sponsorship must be a short string such as possible, unknown, unlikely
 - summary must be one short sentence
 """
+
+
+def _get_client() -> OpenAI:
+    return OpenAI(api_key=settings.openai_api_key)
 
 
 def _clean_json_text(text: str) -> str:
@@ -128,7 +130,7 @@ Return JSON only.
 """
 
     try:
-        response = client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},

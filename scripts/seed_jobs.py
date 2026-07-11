@@ -1,6 +1,11 @@
+import logging
+
 from app.db.database import SessionLocal, Base, engine
 from app.services.job_service import create_job, get_jobs
 from app.db.schemas import JobCreate
+from app.logging_config import configure_logging
+
+logger = logging.getLogger(__name__)
 
 sample_jobs = [
     JobCreate(
@@ -33,6 +38,7 @@ English is used internally. Relocation support possible.
 ]
 
 def main():
+    configure_logging()
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
@@ -41,9 +47,9 @@ def main():
             create_job(db, job)
 
         jobs = get_jobs(db)
-        print(f"Inserted jobs count: {len(jobs)}")
+        logger.info("seed jobs inserted_count=%s", len(jobs))
         for job in jobs:
-            print(job.id, job.title, job.company)
+            logger.info("seed job id=%s title=%s company=%s", job.id, job.title, job.company)
     finally:
         db.close()
 

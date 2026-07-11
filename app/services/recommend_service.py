@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy.orm import Session
 
 from app.agents.job_analyst import analyze_job_text
@@ -8,30 +10,44 @@ from app.repository.analysis_repository import AnalysisRepository
 from app.repository.recommendation_repository import RecommendationRepository
 from app.scoring.recommendation_scorer import RecommendationScorer
 
+logger = logging.getLogger(__name__)
+
 
 def analyze_all_jobs(db: Session, limit: int = 20):
     analysis_repository = AnalysisRepository(db)
     jobs = analysis_repository.get_jobs_without_analysis(limit=limit)
 
     results = []
+    failed_count = 0
 
-    print(f"[analyze_all_jobs] jobs selected = {len(jobs)}")
+    logger.info("analysis batch started selected_count=%s limit=%s", len(jobs), limit)
 
     for job in jobs:
-        print(f"[analyze_all_jobs] processing job_id={job.id}, title={job.title}")
-
         try:
             analyzed = analyze_job_text(job.description_raw, job.title)
-            print(f"[analyze_all_jobs] analyzed result for job_id={job.id}: {analyzed}")
 
             row = analysis_repository.save_analysis(job, analyzed)
             results.append(row)
+            logger.info("analysis succeeded job_id=%s title=%s", job.id, job.title)
 
         except Exception as e:
             db.rollback()
-            print(f"[analyze_all_jobs] ERROR for job_id={job.id}: {repr(e)}")
+            failed_count += 1
+            logger.exception("analysis failed job_id=%s title=%s error=%s", job.id, job.title, repr(e))
+            logger.error(
+                "analysis batch aborted selected_count=%s success_count=%s failed_count=%s",
+                len(jobs),
+                len(results),
+                failed_count,
+            )
             raise
 
+    logger.info(
+        "analysis batch finished selected_count=%s success_count=%s failed_count=%s",
+        len(jobs),
+        len(results),
+        failed_count,
+    )
     return results
 
 
@@ -54,6 +70,13 @@ def get_recommendations_by_profile(db: Session, request: RecommendationRequest):
     scorer = RecommendationScorer()
     builder = RecommendationBuilder()
 
+    logger.info(
+        "recommendation run started skills=%s preferred_countries=%s visa_needed=%s",
+        request.skills,
+        request.preferred_countries,
+        request.visa_needed,
+    )
+
     rows = recommendation_repository.get_jobs_with_analysis()
     recommendations = []
 
@@ -74,4 +97,9 @@ def get_recommendations_by_profile(db: Session, request: RecommendationRequest):
         recommendations.append(recommendation)
 
     recommendations.sort(key=lambda x: x["match_score"], reverse=True)
+    logger.info(
+        "recommendation run finished analyzed_jobs=%s result_count=%s",
+        len(rows),
+        len(recommendations),
+    )
     return recommendations

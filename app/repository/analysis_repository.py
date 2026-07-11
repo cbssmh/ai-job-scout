@@ -1,6 +1,10 @@
+from datetime import datetime
+
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.models import Job, JobAnalysis
+from app.domain.job_lifecycle import JOB_STATUS_ACTIVE, JOB_STATUS_UPDATED
 
 
 class AnalysisRepository:
@@ -11,12 +15,28 @@ class AnalysisRepository:
         return (
             self.db.query(Job)
             .outerjoin(JobAnalysis, Job.id == JobAnalysis.job_id)
-            .filter(JobAnalysis.id.is_(None))
+            .filter(
+                Job.status.in_([JOB_STATUS_ACTIVE, JOB_STATUS_UPDATED]),
+                or_(
+                    JobAnalysis.id.is_(None),
+                    Job.status == JOB_STATUS_UPDATED,
+                    Job.last_analyzed_at.is_(None),
+                ),
+            )
             .limit(limit)
             .all()
         )
 
     def save_analysis(self, job: Job, analyzed: dict) -> JobAnalysis:
+        existing = (
+            self.db.query(JobAnalysis)
+            .filter(JobAnalysis.job_id == job.id)
+            .first()
+        )
+        if existing is not None:
+            self.db.delete(existing)
+            self.db.flush()
+
         row = JobAnalysis(
             job_id=job.id,
             role=str(analyzed.get("role", "")) if analyzed.get("role") is not None else None,
@@ -28,8 +48,13 @@ class AnalysisRepository:
         )
 
         self.db.add(row)
+        job.last_analyzed_at = datetime.utcnow()
+        if job.status == JOB_STATUS_UPDATED:
+            job.status = JOB_STATUS_ACTIVE
+
         self.db.commit()
         self.db.refresh(row)
+        self.db.refresh(job)
         return row
 
     def get_all_analysis(self) -> list[JobAnalysis]:
