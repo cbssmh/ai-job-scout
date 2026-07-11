@@ -1,6 +1,5 @@
 import json
-from openai import OpenAI
-from app.config import settings
+from app.llm.client import get_llm_client_config
 
 SYSTEM_PROMPT = """
 You are a job posting analysis assistant.
@@ -24,8 +23,14 @@ Rules:
 """
 
 
-def _get_client() -> OpenAI:
-    return OpenAI(api_key=settings.openai_api_key)
+def _create_chat_completion(messages: list[dict[str, str]]):
+    llm = get_llm_client_config()
+    return llm.client.chat.completions.create(
+        model=llm.model,
+        messages=messages,
+        temperature=0,
+        max_tokens=800,
+    )
 
 
 def _clean_json_text(text: str) -> str:
@@ -130,13 +135,11 @@ Return JSON only.
 """
 
     try:
-        response = _get_client().chat.completions.create(
-            model="gpt-4.1-mini",
+        response = _create_chat_completion(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
-            ],
-            temperature=0,
+            ]
         )
 
         content = response.choices[0].message.content or ""
