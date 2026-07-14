@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from app.agents import job_analyst
+from app.llm.client import LLMClientConfig
 
 
 REQUIRED_ANALYSIS_FIELDS = {
@@ -41,9 +42,21 @@ def build_fake_client(completions: FakeCompletions):
     )
 
 
+def build_fake_llm_config(completions: FakeCompletions):
+    return LLMClientConfig(
+        provider="test",
+        model="test-model",
+        client=build_fake_client(completions),
+    )
+
+
 def test_analyze_job_text_uses_rule_based_fallback_when_llm_client_raises(monkeypatch):
     completions = FakeCompletions(error=RuntimeError("network unavailable"))
-    monkeypatch.setattr(job_analyst, "_get_client", lambda: build_fake_client(completions))
+    monkeypatch.setattr(
+        job_analyst,
+        "get_llm_client_config",
+        lambda: build_fake_llm_config(completions),
+    )
 
     result = job_analyst.analyze_job_text(
         "We need Python, FastAPI, Docker, English, and visa sponsorship.",
@@ -62,7 +75,11 @@ def test_analyze_job_text_uses_rule_based_fallback_when_llm_client_raises(monkey
 
 def test_analyze_job_text_uses_rule_based_fallback_when_llm_returns_invalid_json(monkeypatch):
     completions = FakeCompletions(content="not valid json")
-    monkeypatch.setattr(job_analyst, "_get_client", lambda: build_fake_client(completions))
+    monkeypatch.setattr(
+        job_analyst,
+        "get_llm_client_config",
+        lambda: build_fake_llm_config(completions),
+    )
 
     result = job_analyst.analyze_job_text(
         "Backend API engineer using Python and SQL. English required.",
@@ -80,7 +97,11 @@ def test_analyze_job_text_uses_rule_based_fallback_when_llm_returns_invalid_json
 
 def test_analyze_job_text_missing_llm_fields_uses_current_default_policy(monkeypatch):
     completions = FakeCompletions(content='{"role": "Backend Engineer"}')
-    monkeypatch.setattr(job_analyst, "_get_client", lambda: build_fake_client(completions))
+    monkeypatch.setattr(
+        job_analyst,
+        "get_llm_client_config",
+        lambda: build_fake_llm_config(completions),
+    )
 
     result = job_analyst.analyze_job_text(
         "Python FastAPI backend role with English.",
