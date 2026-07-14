@@ -39,6 +39,7 @@ def test_builder_creates_recommendation_dict():
     assert result["role"] == "Backend Developer"
     assert result["tech_stack"] == "Python, FastAPI, Docker"
     assert result["skill_score"] == 80
+    assert result["similarity_score"] is None
     assert result["language_bonus"] == 10
     assert result["visa_bonus"] == 10
     assert result["location_bonus"] == 10

@@ -14,6 +14,7 @@ class RecommendationBuilder:
             "role": context.role,
             "tech_stack": context.tech_stack,
             "skill_score": score.skill_score,
+            "similarity_score": None,
             "language_bonus": score.language_bonus,
             "visa_bonus": score.visa_bonus,
             "location_bonus": score.location_bonus,

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
 
@@ -13,6 +13,8 @@ class JobCreate(BaseModel):
 
 
 class JobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     source: str
     title: str
@@ -28,11 +30,10 @@ class JobResponse(BaseModel):
     last_analyzed_at: datetime | None = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class JobAnalysisResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     job_id: int
     role: str | None = None
@@ -42,27 +43,23 @@ class JobAnalysisResponse(BaseModel):
     visa_sponsorship: str | None = None
     summary: str | None = None
 
-    class Config:
-        from_attributes = True
-
 
 class RecommendationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     job_id: int
     title: str
     company: str
     role: str | None = None
     tech_stack: str | None = None
     skill_score: int
-    similarity_score: int
+    similarity_score: int | None = None
     language_bonus: int
     visa_bonus: int
     location_bonus: int
     match_score: int
     visa_sponsorship: str | None = None
     reason: str
-
-    class Config:
-        from_attributes = True
 
 
 class RecommendationRequest(BaseModel):
