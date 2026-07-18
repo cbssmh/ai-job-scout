@@ -128,7 +128,7 @@ jobs:
           fi
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for revision to be healthy and running
+      - name: Wait for revision to be active and healthy
         shell: bash
         run: |
           revision="${{ steps.deploy.outputs.revision }}"
@@ -137,19 +137,19 @@ jobs:
               --name "$CONTAINER_APP_NAME" \
               --resource-group "$AZURE_RESOURCE_GROUP" \
               --revision "$revision" \
-              --query '[properties.healthState, properties.runningState]' \
+              --query '[properties.active, properties.healthState]' \
               --output tsv)"; then
-              read -r health_state running_state <<< "$states"
+              read -r active health_state <<< "$states"
             else
+              active="NotAvailable"
               health_state="NotAvailable"
-              running_state="NotAvailable"
             fi
-            printf 'Attempt %d/30: health=%s running=%s\n' \
-              "$attempt" "$health_state" "$running_state"
-            if [[ "$health_state" == "Healthy" && "$running_state" == "Running" ]]; then
+            printf 'Attempt %d/30: active=%s health=%s\n' \
+              "$attempt" "$active" "$health_state"
+            if [[ "${active,,}" == "true" && "$health_state" == "Healthy" ]]; then
               exit 0
             fi
-            if [[ "$health_state" == "Unhealthy" || "$running_state" == "Failed" ]]; then
+            if [[ "$health_state" == "Unhealthy" ]]; then
               echo "Revision entered a terminal unhealthy state." >&2
               exit 1
             fi
@@ -157,7 +157,7 @@ jobs:
               sleep 10
             fi
           done
-          echo "Revision did not become Healthy and Running within 5 minutes." >&2
+          echo "Revision did not become active and Healthy within 5 minutes." >&2
           exit 1
 
       - name: Verify HTTPS health endpoint
