@@ -1,0 +1,197 @@
+name: Deploy to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || vars.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || vars.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID || vars.AZURE_SUBSCRIPTION_ID }}
+  AZURE_RESOURCE_GROUP: rg-ai-jobscout-dev
+  ACR_NAME: aijobscoutms2026
+  ACR_LOGIN_SERVER: aijobscoutms2026.azurecr.io
+  IMAGE_REPOSITORY: ai-job-scout
+  CONTAINER_APP_NAME: ca-ai-jobscout-dev
+  CONTAINER_NAME: ca-ai-jobscout-dev
+  HEALTH_URL: https://ca-ai-jobscout-dev.kindbay-14c42b35.eastasia.azurecontainerapps.io/health
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Prepare Compose environment
+        run: cp .env.example .env
+
+      - name: Validate Docker Compose config
+        run: docker compose config
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          missing=()
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing GitHub secret or variable: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+          if [[ "$AZURE_TENANT_ID" != "26080271-1d99-47dd-a23f-502db6ef9f34" ]]; then
+            echo "AZURE_TENANT_ID does not match the expected tenant." >&2
+            exit 1
+          fi
+          if [[ "$AZURE_SUBSCRIPTION_ID" != "d05a26b7-4017-48f1-a956-d9f919361d10" ]]; then
+            echo "AZURE_SUBSCRIPTION_ID does not match the expected subscription." >&2
+            exit 1
+          fi
+
+      - name: Log in to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in Docker to Azure Container Registry
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        id: image
+        shell: bash
+        run: |
+          image_sha="$ACR_LOGIN_SERVER/$IMAGE_REPOSITORY:$GITHUB_SHA"
+          image_main="$ACR_LOGIN_SERVER/$IMAGE_REPOSITORY:main"
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag "$image_sha" \
+            --tag "$image_main" \
+            --push \
+            .
+          echo "reference=$image_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy SHA-tagged image
+        id: deploy
+        shell: bash
+        run: |
+          revision="$(az containerapp update \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --container-name "$CONTAINER_NAME" \
+            --image "${{ steps.image.outputs.reference }}" \
+            --command "" \
+            --args "" \
+            --query properties.latestRevisionName \
+            --output tsv)"
+          if [[ -z "$revision" ]]; then
+            echo "Azure did not return a deployed revision name." >&2
+            exit 1
+          fi
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for revision to be healthy and running
+        shell: bash
+        run: |
+          revision="${{ steps.deploy.outputs.revision }}"
+          for attempt in {1..30}; do
+            if states="$(az containerapp revision show \
+              --name "$CONTAINER_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --revision "$revision" \
+              --query '[properties.healthState, properties.runningState]' \
+              --output tsv)"; then
+              read -r health_state running_state <<< "$states"
+            else
+              health_state="NotAvailable"
+              running_state="NotAvailable"
+            fi
+            printf 'Attempt %d/30: health=%s running=%s\n' \
+              "$attempt" "$health_state" "$running_state"
+            if [[ "$health_state" == "Healthy" && "$running_state" == "Running" ]]; then
+              exit 0
+            fi
+            if [[ "$health_state" == "Unhealthy" || "$running_state" == "Failed" ]]; then
+              echo "Revision entered a terminal unhealthy state." >&2
+              exit 1
+            fi
+            if (( attempt < 30 )); then
+              sleep 10
+            fi
+          done
+          echo "Revision did not become Healthy and Running within 5 minutes." >&2
+          exit 1
+
+      - name: Verify HTTPS health endpoint
+        id: health
+        shell: bash
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error \
+              --connect-timeout 5 \
+              --max-time 15 \
+              "$HEALTH_URL" > /dev/null; then
+              echo "result=success" >> "$GITHUB_OUTPUT"
+              echo "Health endpoint returned success."
+              exit 0
+            fi
+            printf 'Health check attempt %d/12 failed.\n' "$attempt" >&2
+            if (( attempt < 12 )); then
+              sleep 10
+            fi
+          done
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+          echo "Health endpoint did not return success within the retry window." >&2
+          exit 1
+
+      - name: Write deployment summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Azure Container Apps deployment"
+            echo
+            echo "- Commit SHA: \`$GITHUB_SHA\`"
+            echo "- Image: \`${{ steps.image.outputs.reference || 'not pushed' }}\`"
+            echo "- Revision: \`${{ steps.deploy.outputs.revision || 'not deployed' }}\`"
+            echo "- Health endpoint: $HEALTH_URL"
+            echo "- Health result: \`${{ steps.health.outputs.result || 'not completed' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
