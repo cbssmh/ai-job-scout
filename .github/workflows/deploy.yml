@@ -118,8 +118,8 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --container-name "$CONTAINER_NAME" \
             --image "${{ steps.image.outputs.reference }}" \
-            --command "" \
-            --args "" \
+            --command \
+            --args \
             --query properties.latestRevisionName \
             --output tsv)"
           if [[ -z "$revision" ]]; then
