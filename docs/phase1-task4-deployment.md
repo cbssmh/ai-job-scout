@@ -76,12 +76,19 @@ access:
 | `Container Apps Contributor` | `/subscriptions/d05a26b7-4017-48f1-a956-d9f919361d10/resourceGroups/rg-ai-jobscout-dev` | Update and inspect the Container App and its revisions within this resource group |
 
 The deployment identity is not assigned subscription-wide `Contributor` or
-`Owner`. The Container App's existing registry-pull configuration remains
-responsible for pulling the deployed image.
+`Owner`. The GitHub OIDC deployment identity performs Azure login, pushes images
+to ACR, and updates the Container App. A separate Container Apps Environment
+managed identity (`system-environment`) performs ACR pull. The Container App
+itself has no assigned identity.
+
+The Container Apps environment uses the required minimum Log Analytics platform
+logging configuration. Phase 1 does not claim completed observability,
+monitoring, alerting, or a telemetry platform; those capabilities belong to
+future phases.
 
 ## Workflow and image tags
 
-The immutable deployment image is:
+The commit-SHA-tagged deployment image is:
 
 ```text
 aijobscoutms2026.azurecr.io/ai-job-scout:<full-git-commit-sha>
@@ -91,10 +98,13 @@ The same build is also published as the mutable convenience tag `main`, but the
 Container App is always updated to the full SHA tag. Buildx explicitly targets
 `linux/amd64`. The update clears command and args overrides so the image's
 exec-form Docker `CMD` remains authoritative; it does not add Azure-specific
-startup behavior.
+startup behavior. Azure CLI receives `--command` and `--args` with zero values,
+and Azure persists both properties as `null`. In this template, `null` means no
+startup override is configured.
 
-The workflow polls the selected revision for both `Healthy` and `Running`, with
-a five-minute limit. It then retries the HTTPS health request 12 times using
+The workflow polls until the selected revision has `active == true` and
+`healthState == Healthy`, with a five-minute limit. It then retries the HTTPS
+health request 12 times using
 connection and request timeouts. Any test, build, push, deployment, revision, or
 health-check failure fails the run. The Actions step summary records the commit,
 image, revision, endpoint, and health result.
@@ -104,14 +114,14 @@ image, revision, endpoint, and health result.
 After a successful run:
 
 1. Open the run summary and confirm the image uses the expected commit SHA.
-2. Confirm the named revision is `Healthy` and `Running`:
+2. Confirm the named revision is active and Healthy:
 
    ```bash
    az containerapp revision show \
      --name ca-ai-jobscout-dev \
      --resource-group rg-ai-jobscout-dev \
      --revision <revision-name> \
-     --query '{health:properties.healthState,running:properties.runningState}'
+     --query '{active:properties.active,health:properties.healthState}'
    ```
 
 3. Confirm the public endpoint returns a successful response:
@@ -124,8 +134,8 @@ After a successful run:
 ## Rollback
 
 Choose a previously successful full SHA from ACR or a prior workflow summary,
-then update the app to that immutable image while keeping startup overrides
-cleared:
+then update the app to that traceable SHA-tagged image while keeping startup
+overrides cleared:
 
 ```bash
 az containerapp update \
@@ -133,13 +143,13 @@ az containerapp update \
   --resource-group rg-ai-jobscout-dev \
   --container-name ca-ai-jobscout-dev \
   --image aijobscoutms2026.azurecr.io/ai-job-scout:<known-good-sha> \
-  --command "" \
-  --args ""
+  --command \
+  --args
 ```
 
-Wait for the resulting revision to become `Healthy` and `Running`, then repeat
-the HTTPS health check. Do not roll back by moving the `main` tag because it is
-mutable.
+Wait for the resulting revision to have `active == true` and
+`healthState == Healthy`, then repeat the HTTPS health check. Do not roll back by
+moving the `main` tag because it is mutable.
 
 ## Conditional Access and MFA
 
@@ -155,4 +165,6 @@ it; partial creation is safe because reruns reuse existing resources.
 
 This deployment work changes no business logic, API behavior, UI, AI behavior,
 or database design. Docker Compose remains supported, and the workflow does not
-modify application source code.
+modify application source code. Azure resources were provisioned manually during
+Phase 1; infrastructure reproducibility through Terraform or Bicep is outside
+the Phase 1 scope.
