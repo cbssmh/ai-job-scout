@@ -6,4 +6,5 @@ python-dotenv
 openai
 requests
 streamlit
+azure-monitor-opentelemetry
 pytest

@@ -86,7 +86,7 @@ The scorer returns `reason_parts`:
 - `visa_bonus=<value>`
 - `location_bonus=<value>`
 
-`RecommendationBuilder.build()` joins these parts with `; ` into the API `reason` field.
+`RecommendationBuilder.build()` joins these parts with a semicolon-space delimiter into the API `reason` field.
 
 ## Example
 

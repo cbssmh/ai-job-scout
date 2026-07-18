@@ -8,7 +8,7 @@ behavior. It builds on the completed Phase 0 Azure foundation, including the
 subscription, resource group, naming convention, cost governance, budget, and
 tags.
 
-**Implementation**
+### Implementation
 
 - Provisioned Azure Container Registry at
   `aijobscoutms2026.azurecr.io`.
@@ -31,7 +31,7 @@ tags.
 - Provisioned Azure resources manually; Terraform/Bicep infrastructure
   reproducibility was outside the Phase 1 scope.
 
-**Documentation**
+### Documentation
 
 - Documented the GitHub OIDC trust model, Azure roles and scopes, deployment
   flow, image-tagging strategy, verification, rollback, and Conditional Access
@@ -42,7 +42,7 @@ tags.
 - Consolidated Phase 1 decisions, traceability, and readiness assessment in this
   completion summary.
 
-**Operational achievements**
+### Operational achievements
 
 - Completed Phase 1 Tasks 1 through 6 with PASS status.
 - Deployed commit `131a119f798cc281f47f64e8990b93fe27d4555c` from repository
@@ -58,7 +58,7 @@ tags.
 
 ## 2. Architecture Decision Records
 
-**ADR-001 — Deploy in East Asia**
+### ADR-001 — Deploy in East Asia
 
 | Field | Record |
 | --- | --- |
@@ -67,7 +67,7 @@ tags.
 | Reason | Azure for Students subscription policy rejected both Korea regions; East Asia was permitted and successfully provisioned. |
 | Consequences | Phase 1 can operate within subscription policy. Region choice remains constrained by that policy and must be reconsidered if availability, residency, or latency requirements change. |
 
-**ADR-002 — Use Azure Container Registry**
+### ADR-002 — Use Azure Container Registry
 
 | Field | Record |
 | --- | --- |
@@ -76,7 +76,7 @@ tags.
 | Reason | ACR provides an Azure-native registry that integrates with Entra authentication, scoped Azure RBAC, and Container Apps while keeping deployment and runtime pull responsibilities separate. |
 | Consequences | Image publication and deployment remain within the Azure control plane. The GitHub OIDC identity requires registry-scoped push access, and the environment identity requires pull access. |
 
-**ADR-003 — Use Azure Container Apps**
+### ADR-003 — Use Azure Container Apps
 
 | Field | Record |
 | --- | --- |
@@ -85,7 +85,7 @@ tags.
 | Reason | Container Apps supplies managed container revisions, ingress, traffic routing, and health state without introducing cluster or virtual-machine administration into Phase 1. |
 | Consequences | Azure controls revision activation and ingress behavior. Deployment verification must use Container Apps revision properties and the public endpoint. The environment uses minimum Log Analytics platform logging only; broader observability, monitoring, alerting, and telemetry remain future work. Azure resources were provisioned manually because Terraform/Bicep reproducibility was outside Phase 1. |
 
-**ADR-004 — Authenticate GitHub Actions with OIDC**
+### ADR-004 — Authenticate GitHub Actions with OIDC
 
 | Field | Record |
 | --- | --- |
@@ -94,7 +94,7 @@ tags.
 | Reason | OIDC provides short-lived workload authentication and permits resource-scoped RBAC without storing a reusable Azure secret in GitHub. |
 | Consequences | The workflow requires `id-token: write`, an exact repository/ref trust subject, and correctly scoped role assignments. Initial administrative bootstrap remains subject to Conditional Access MFA. |
 
-**ADR-005 — Deploy traceable Git SHA image tags**
+### ADR-005 — Deploy traceable Git SHA image tags
 
 | Field | Record |
 | --- | --- |
@@ -103,7 +103,7 @@ tags.
 | Reason | A full SHA creates a traceable and auditable mapping from source commit to running revision. |
 | Consequences | Runtime provenance and rollback selection are explicit. ACR retains additional commit-SHA tags that require a future retention policy if storage growth becomes material. Registry-enforced tag immutability was not implemented in Phase 1. |
 
-**ADR-006 — Make the Dockerfile CMD authoritative**
+### ADR-006 — Make the Dockerfile CMD authoritative
 
 | Field | Record |
 | --- | --- |
@@ -112,7 +112,7 @@ tags.
 | Reason | The image must start correctly when executed directly, and Azure startup overrides previously produced malformed arguments. |
 | Consequences | The same image has a valid default API process across runtimes. Docker Compose can continue to override the command for its API and dashboard services. |
 
-**ADR-007 — Keep CI and CD workflows separate**
+### ADR-007 — Keep CI and CD workflows separate
 
 | Field | Record |
 | --- | --- |
@@ -121,7 +121,7 @@ tags.
 | Reason | Separation preserves pull-request CI behavior and gives cloud deployment its own permissions, concurrency, authentication, and failure boundary. |
 | Consequences | Deployment remains readable and independently controllable. Pushes to `main` can execute test coverage in both workflows, adding some deliberate validation duplication. |
 
-**ADR-008 — Verify active and Healthy, then verify HTTPS**
+### ADR-008 — Verify active and Healthy, then verify HTTPS
 
 | Field | Record |
 | --- | --- |

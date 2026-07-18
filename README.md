@@ -1,182 +1,146 @@
-<h1 align="center">AI Job Scout</h1>
+# AI Job Scout: Cloud Operations Edition
 
-<p align="center">
-Backend-focused job intelligence system that turns raw software engineering job postings into structured analysis and explainable recommendations.
-</p>
+![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB)
+![FastAPI](https://img.shields.io/badge/FastAPI-API-009688)
+![Azure Container Apps](https://img.shields.io/badge/Azure-Container%20Apps-0078D4)
+![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-OIDC%20CD-2088FF)
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Azure%20Monitor-7B42BC)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11-blue" alt="Python 3.11" />
-  <img src="https://img.shields.io/badge/FastAPI-Backend-009688" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/Docker-Compose-2496ED" alt="Docker Compose" />
-  <img src="https://img.shields.io/badge/NVIDIA%20NIM-LLM%20Extraction-76B900" alt="NVIDIA NIM" />
-  <img src="https://img.shields.io/badge/OpenAI%20Compatible-Provider%20Boundary-111111" alt="OpenAI-compatible provider" />
-  <img src="https://img.shields.io/badge/SQLAlchemy-ORM-red" alt="SQLAlchemy" />
-  <img src="https://img.shields.io/badge/License-MIT-lightgrey" alt="MIT License" />
-</p>
+> **North Star:** “We are not improving the product. We are improving how the product is operated.”
 
-AI Job Scout is a modular FastAPI backend for collecting job postings, extracting structured job signals, and ranking analyzed jobs with deterministic scoring. The current project emphasizes explicit service boundaries, local reproducibility, LLM failure fallback, re-analysis support, and testable backend workflow.
+AI Job Scout is a backend-focused job intelligence application that collects software-engineering job postings, extracts structured signals, and produces explainable recommendations. Cloud Operations Edition takes that existing application and demonstrates how to operate it on Azure with a governed foundation, repeatable container deployment, secretless workload authentication, centralized secret management, and verified request tracing.
 
-It is not presented as a fully operated production platform. The repository does not currently include authentication, cloud deployment automation, SLOs, backup/restore automation, distributed workers, or external observability infrastructure.
+The project deliberately leaves product behavior intact. The API, scoring rules, LLM provider boundary, database design, and user interfaces were not redesigned to create the cloud platform. The result is a completed development-environment operations case study—not a claim of production readiness or enterprise scale.
 
-The LLM integration is kept behind a lightweight provider boundary. The default development setup can use NVIDIA NIM through an OpenAI-compatible API, while OpenAI remains an optional configured provider. The app does not silently route to paid fallback providers when NVIDIA is unavailable.
+## The Problem
 
-## What Is Implemented
+An application can work locally and still be difficult to operate responsibly. Before this work, AI Job Scout had no validated cloud runtime, deployment identity model, managed secret path, or application-level telemetry. The operational objective was therefore to answer five practical questions:
 
-- Greenhouse job ingestion helper with keyword filtering
-- Raw job storage in SQLite through SQLAlchemy
-- Job content hashing for duplicate/update detection
-- Separate `jobs` and `job_analysis` tables
-- LLM-backed job analysis with rule-based fallback parsing
-- OpenAI-compatible provider boundary for NVIDIA NIM and optional OpenAI configuration
-- Re-analysis lifecycle for changed job postings
-- Recommendation scoring based on skills, language signal, visa signal, and preferred country
-- FastAPI endpoints for jobs, analysis, recommendations, and health checks
-- Streamlit dashboard for the Docker Compose dashboard runtime
-- Additional Next.js client under `web/`
-- Pytest coverage for scoring, recommendation building, location parsing, health endpoints, LLM fallback, backend workflow, and job update/re-analysis lifecycle
+1. Can the existing container run reliably in a governed Azure environment?
+2. Can every deployment be traced to source and verified before it is accepted?
+3. Can deployment, image pull, and runtime access use separate identities without long-lived Azure credentials?
+4. Can the application receive its provider credential without committing or copying the value into deployment configuration?
+5. Can real requests, failures, latency, exceptions, and trace correlation be proved from the running Azure service?
 
-## Stack
+All five questions were validated against the deployed runtime.
 
-| Runtime Area | Technologies |
+## Operational Outcome
+
+| Capability | Validated result |
 | --- | --- |
-| Core runtime | Python 3.11, FastAPI, SQLAlchemy, SQLite, Docker Compose |
-| LLM analysis | OpenAI Python SDK, NVIDIA NIM OpenAI-compatible API, JSON parsing, rule-based fallback |
-| Default dashboard | Streamlit (`frontend/dashboard.py`) |
-| Additional client | Next.js, React, TypeScript (`web/`) |
-| Testing | Pytest |
-
-## Screenshots
-
-<p align="center">
-  <img src="docs/screenshots/dashboard-overview.png" alt="AI Job Scout dashboard metrics and top recommendation summary" width="900" />
-</p>
-
-<p align="center"><em>Dashboard metrics and recommendation summary.</em></p>
-
-<p align="center">
-  <img src="docs/screenshots/recommendation-results.png" alt="Ranked recommendation results with score breakdown" width="900" />
-</p>
-
-<p align="center"><em>Ranked recommendation cards with match score, skill score, and bonus breakdowns.</em></p>
-
-<p align="center">
-  <img src="docs/screenshots/api-docs.png" alt="FastAPI Swagger UI route groups for jobs analysis and recommendations" width="900" />
-</p>
-
-<p align="center"><em>FastAPI route structure exposed through Swagger UI.</em></p>
+| Azure foundation | Existing subscription and resource group reused with established naming, tagging, budget, and cost-governance conventions |
+| Container delivery | `linux/amd64` image stored in Azure Container Registry and deployed to Azure Container Apps |
+| Continuous deployment | GitHub Actions uses OpenID Connect (OIDC), deploys traceable images, waits for a healthy revision, and verifies public HTTPS health |
+| Runtime secrets | NVIDIA credential stored in Azure Key Vault and delivered through a versionless Key Vault reference using managed identity |
+| Identity boundaries | GitHub deployment, ACR pull, and application runtime responsibilities remain separate and scoped |
+| Application observability | Azure Monitor OpenTelemetry exports request, exception, dependency, duration, and W3C correlation telemetry to Application Insights |
+| Runtime proof | The final revision was Active, Healthy, Provisioned, latest-ready, and served 100% of traffic while `/health` returned HTTP 200 |
+| Regression protection | 27 automated tests passed; Docker Compose configuration and repository formatting checks also passed |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A["Greenhouse API"] --> B["Crawler script"]
-    B --> C["JobCreate payload"]
-    C --> D["Job service"]
-    D --> E["jobs table"]
-    E --> F["Analysis service"]
-    F --> G{"LLM JSON ok?"}
-    N["NVIDIA NIM<br/>OpenAI-compatible API"] -.-> F
-    O["OpenAI Provider<br/>Optional configured provider"] -.-> F
-    G -- yes --> H["Structured analysis"]
-    G -- no --> I["Rule-based fallback"]
-    I --> H
-    H --> J["job_analysis table"]
-    J --> K["Recommendation scorer"]
-    K --> L["API response"]
-    L --> M["Streamlit / Next.js client"]
+    Developer["Push to main"] --> Actions["GitHub Actions"]
+    Actions -- "OIDC federation" --> Entra["Microsoft Entra ID"]
+    Actions --> ACR["Azure Container Registry"]
+    ACR -- "managed image pull" --> ACA["Azure Container Apps"]
+
+    User["HTTPS client"] --> Ingress["Container Apps ingress"]
+    Ingress --> API["FastAPI / Uvicorn"]
+    API --> SQLite["SQLite"]
+    API -. "configured provider call" .-> LLM["NVIDIA NIM or OpenAI-compatible API"]
+
+    ACA -- "system-assigned identity" --> KV["Azure Key Vault"]
+    API -- "OpenTelemetry traces" --> AI["Application Insights"]
+    AI --> LA["Log Analytics workspace"]
 ```
 
-The main backend flow is intentionally simple:
+The normal delivery path is intentionally small:
 
 ```text
-FastAPI route
-  -> service orchestration
-  -> repository query/persistence
-  -> provider-backed LLM analysis
-  -> domain context
-  -> deterministic scoring
-  -> response builder
+push to main
+  -> test and validate
+  -> authenticate to Azure with GitHub OIDC
+  -> build and push a linux/amd64 image to ACR
+  -> update Azure Container Apps
+  -> wait for an Active and Healthy revision
+  -> verify the public HTTPS /health contract
 ```
 
-| Layer | Responsibility | Key Files |
-| --- | --- | --- |
-| API | HTTP routes and dependency injection | `app/api/`, `app/main.py` |
-| Services | Job creation, analysis batches, recommendation orchestration | `app/services/job_service.py`, `app/services/recommend_service.py` |
-| Repositories | SQLAlchemy query and persistence boundaries | `app/repository/` |
-| Domain | Recommendation context and scoring data objects | `app/domain/` |
-| Provider boundary | Environment-based LLM provider selection and OpenAI-compatible client configuration | `app/llm/` |
-| Analysis | LLM extraction and fallback parsing | `app/agents/job_analyst.py` |
-| Scoring | Deterministic scoring policy | `app/scoring/recommendation_scorer.py` |
-| Response building | API-ready recommendation dictionaries | `app/recommendation/recommendation_builder.py` |
+The deployed image owns its startup command through an exec-form Dockerfile `CMD`; Azure command and argument overrides remain absent. Container Apps revisions provide rollout state and traffic control without introducing a Kubernetes cluster or virtual-machine operations layer.
 
-More detail is available in [docs/architecture.md](docs/architecture.md).
+## Azure Services
 
-## LLM Provider Configuration
-
-The default development setup can use NVIDIA NIM while access is available. NVIDIA access is not assumed to remain free permanently.
-
-Configuration is environment-variable based:
-
-```env
-LLM_PROVIDER=nvidia
-NVIDIA_API_KEY=your_nvidia_api_key_here
-NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_MODEL=z-ai/glm-5.2
-```
-
-Optional OpenAI setup:
-
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4.1-mini
-```
-
-Supported configured providers:
-
-- `nvidia`
-- `openai`
-
-Unsupported provider names should fail configuration clearly. The provider layer is intentionally lightweight and does not implement automatic paid fallback routing. If NVIDIA access ends, the intended next step is to swap the configured provider or evaluate a local/free model path, not to add production-style routing complexity.
-
-Optional manual NVIDIA smoke test:
-
-```bash
-python scripts/test_nvidia_api.py
-```
-
-The smoke test is manual and should only be run when `NVIDIA_API_KEY` is configured locally. It is not part of CI.
-
-## Recommendation Scoring
-
-The active recommendation endpoint uses `RecommendationScorer`:
-
-```text
-match_score =
-  skill_score
-+ language_bonus
-+ visa_bonus
-+ location_bonus
-```
-
-The final score is capped at `100`.
-
-| Component | Current Rule |
+| Service | Role in the project |
 | --- | --- |
-| `skill_score` | Percentage of extracted job tech stack items that appear in the user's skills |
-| `language_bonus` | `10` when the analysis text includes English |
-| `visa_bonus` | `10` when the user needs visa support and `visa_sponsorship == "possible"` |
-| `location_bonus` | `10` when the parsed job country matches a preferred country |
-| `similarity_score` | Nullable compatibility field; the active recommendation route does not calculate similarity |
+| Azure Resource Group | Holds the development resources under the established naming and governance boundary |
+| Azure Container Registry | Stores traceable application images in repository `ai-job-scout` |
+| Azure Container Apps | Runs the FastAPI container, manages revisions, public ingress, scaling, health state, and traffic |
+| Microsoft Entra ID | Federates GitHub Actions and issues short-lived Azure access without a deployment client secret |
+| Azure Key Vault | Stores the NVIDIA runtime credential as a versioned secret |
+| Managed Identities and Azure RBAC | Authorize image pull and runtime secret access with separate responsibilities |
+| Application Insights | Receives application traces through the Azure Monitor OpenTelemetry distribution |
+| Log Analytics | Stores queryable request, exception, and dependency telemetry |
 
-Full scoring notes and examples are in [docs/scoring-system.md](docs/scoring-system.md).
+All deployed resources are in **East Asia**, the region permitted by the current Azure for Students subscription policy. The application runs in resource group `rg-ai-jobscout-dev` as Container App `ca-ai-jobscout-dev` inside environment `cae-ai-jobscout-dev`.
 
-## API Examples
+## Security Model
 
-### Health Check
+The project uses identity and references instead of distributing reusable credentials through the delivery pipeline.
+
+- **Deployment:** GitHub Actions requests a short-lived OIDC token. The Entra federated credential is restricted to the repository's `main` branch, and the workflow has only `contents: read` and `id-token: write` GitHub permissions.
+- **Image publication and deployment:** the GitHub deployment identity has the Azure roles required for ACR push and Container Apps deployment at their intended scopes.
+- **Image pull:** the Container Apps environment identity pulls from ACR. Registry credentials are not embedded in the application.
+- **Runtime secret access:** the Container App's system-assigned identity has `Key Vault Secrets User` on the dedicated vault. It resolves a versionless Key Vault reference exposed to the application through its existing `NVIDIA_API_KEY` environment contract.
+- **Secret handling:** no provider credential, Azure client secret, or Application Insights connection-string value is stored in the repository or printed in the evidence documents.
+- **Responsibility separation:** the deployment identity and image-pull identity do not have Key Vault data-plane access; the runtime identity does not publish images or deploy revisions.
+
+The secret-delivery path, RBAC assignments, revision configuration, and public health behavior were validated. A meaningful live provider-secret rotation was not performed because no distinct replacement credential was available; the tested procedure and rollback steps are documented in the [secret rotation runbook](docs/phase2-secret-rotation-runbook.md).
+
+## Observability
+
+Application telemetry is initialized once, before FastAPI is imported, and only when `APPLICATIONINSIGHTS_CONNECTION_STRING` is present. The implementation uses the Microsoft Azure Monitor OpenTelemetry distribution and keeps the project scope trace-focused: OpenTelemetry log export, metric export, and Live Metrics are disabled.
+
+The deployed runtime produced queryable evidence for:
+
+- request timestamp, route name, URL, HTTP status, success state, and duration;
+- W3C operation, request, and parent identifiers;
+- a controlled HTTP 500 and its captured `RuntimeError` exception;
+- direct request-to-exception correlation through matching operation and parent/request identifiers;
+- automatically emitted dependency spans available from normal execution.
+
+Dependency telemetry is intentionally reported as **observed but limited**. Normal health and root requests generated in-process ASGI send spans, but no external dependency call was manufactured and no business logic was changed just to produce richer data.
+
+The temporary exception-validation route and environment flag were removed after evidence collection. The final deployed path returns 404, the clean revision remains healthy, and no test-only failure mechanism remains in the application.
+
+## Runtime Verification
+
+Final Azure validation was completed on **2026-07-19 (KST)**.
+
+| Verification | Observed result |
+| --- | --- |
+| Final revision | `ca-ai-jobscout-dev--0000011` |
+| Revision state | Active, Healthy, Provisioned, latest-ready |
+| Traffic | 100% to the final revision |
+| Replica state | One running replica during final verification |
+| Public health | HTTPS `GET /health` returned HTTP 200 |
+| Health contract | `{"status":"ok","service":"ai-job-scout-api"}` |
+| Request telemetry | Real 200, 404, and controlled 500 requests recorded with timestamps, URLs, codes, success, and duration |
+| Exception telemetry | Controlled `RuntimeError` recorded and correlated to its 500 request |
+| Correlation | Operation IDs matched; exception parent ID matched the request ID |
+| Dependency telemetry | In-process ASGI dependency spans observed; external dependency coverage remains limited |
+| Tests | 27 passed; 21 non-blocking dependency deprecation warnings |
+| Local runtime checks | Docker Compose configuration validated; repository diff checks passed |
+
+The first request after scale-to-zero took approximately 24 seconds in the observed manual sample. Warm client requests were approximately 0.15–0.19 seconds, while recorded server-side request durations were measured in milliseconds. These are operational observations, not a performance benchmark.
+
+Public health contract:
 
 ```bash
-curl http://localhost:8000/health
+curl --fail --show-error --silent \
+  https://ca-ai-jobscout-dev.kindbay-14c42b35.eastasia.azurecontainerapps.io/health
 ```
 
 ```json
@@ -186,275 +150,137 @@ curl http://localhost:8000/health
 }
 ```
 
-### Database Health Check
+Full command output, sanitized resource state, and KQL results are preserved in the [runtime telemetry evidence](docs/phase3-runtime-evidence.md).
 
-```bash
-curl http://localhost:8000/health/db
-```
+## Application Capabilities
 
-```json
-{
-  "status": "ok",
-  "database": "connected"
-}
-```
+Cloud Operations Edition operates the existing application without changing its product scope:
 
-The root endpoint `/` returns a simple service message and is not the health check.
+- Greenhouse job ingestion with keyword filtering;
+- SQLite persistence through SQLAlchemy;
+- content hashing for duplicate and update detection;
+- separate job and job-analysis records;
+- LLM-backed extraction through an OpenAI-compatible provider boundary;
+- deterministic rule-based fallback when LLM output is unavailable or invalid;
+- re-analysis of changed postings;
+- explainable recommendation scoring using skills, language, visa, and location signals;
+- FastAPI endpoints for jobs, analysis, recommendations, and health;
+- a Streamlit dashboard and an additional Next.js client.
 
-### Create a Job
-
-```bash
-curl -X POST http://localhost:8000/jobs/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": "greenhouse",
-    "title": "Backend Engineer",
-    "company": "example-company",
-    "location": "Berlin, Germany",
-    "url": "https://example.com/jobs/backend-engineer",
-    "description_raw": "We are looking for a backend engineer with Python, FastAPI, Docker, and SQL experience.",
-    "posted_at": null
-  }'
-```
-
-### Run Analysis
-
-```bash
-curl -X POST "http://localhost:8000/analysis/run?limit=20"
-```
-
-### Run Recommendations
-
-```bash
-curl -X POST http://localhost:8000/recommendations/run \
-  -H "Content-Type: application/json" \
-  -d '{
-    "skills": ["Python", "FastAPI", "Docker", "AWS"],
-    "preferred_countries": ["Germany", "Netherlands"],
-    "visa_needed": true
-  }'
-```
-
-Example response item:
-
-```json
-{
-  "job_id": 1,
-  "title": "Backend Engineer",
-  "company": "example-company",
-  "role": "Backend Engineer",
-  "tech_stack": "Python, FastAPI, Docker",
-  "skill_score": 100,
-  "similarity_score": null,
-  "language_bonus": 10,
-  "visa_bonus": 10,
-  "location_bonus": 10,
-  "match_score": 100,
-  "visa_sponsorship": "possible",
-  "reason": "Matched skills: python, fastapi, docker; language_bonus=10; visa_bonus=10; location_bonus=10"
-}
-```
-
-## Project Structure
+The recommendation result is deterministic after analysis:
 
 ```text
-app/
-|-- agents/          # LLM analysis and fallback parser
-|-- api/             # FastAPI routers
-|-- crawler/         # Greenhouse integration helper
-|-- db/              # SQLAlchemy models, session setup, Pydantic schemas
-|-- domain/          # Recommendation and lifecycle domain objects
-|-- embedding/       # Similarity helper module, not used by active API route
-|-- filtering/       # Recommendation filtering helper module
-|-- llm/             # Lightweight provider boundary
-|-- processing/      # Job processing and location parsing utilities
-|-- recommendation/  # Recommendation response construction
-|-- repository/      # Data access boundaries
-|-- scoring/         # Recommendation scoring policies
-|-- services/        # Application workflows
-`-- main.py          # FastAPI entry point
-
-frontend/
-`-- dashboard.py     # Streamlit dashboard used by Docker Compose
-
-scripts/
-|-- fetch_greenhouse_jobs.py
-|-- seed_jobs.py
-|-- test_nvidia_api.py
-`-- verify_phase2.py
-
-tests/
-|-- test_backend_workflow_integration.py
-|-- test_health_routes.py
-|-- test_job_analysis_fallback.py
-|-- test_job_lifecycle.py
-|-- test_location_parser.py
-|-- test_recommendation_builder.py
-`-- test_recommendation_scorer.py
-
-web/
-|-- app/
-`-- src/
+match_score = skill_score + language_bonus + visa_bonus + location_bonus
 ```
 
-## Local Setup
+The final score is capped at `100`. See the [scoring system](docs/scoring-system.md) for the exact rules and examples.
 
-### Backend
+## Repository Structure
+
+```text
+.
+├── .github/workflows/
+│   ├── test.yml                 # pull-request and branch CI
+│   └── deploy.yml               # OIDC-based Azure deployment
+├── app/
+│   ├── api/                     # FastAPI routes
+│   ├── agents/                  # job analysis and fallback parsing
+│   ├── domain/                  # recommendation domain objects
+│   ├── llm/                     # provider selection and client boundary
+│   ├── repository/              # SQLAlchemy persistence boundaries
+│   ├── scoring/                 # deterministic recommendation policy
+│   ├── services/                # application orchestration
+│   ├── main.py                  # API entry point
+│   └── telemetry.py             # environment-gated Azure Monitor setup
+├── docs/                        # architecture, operations, evidence, and decisions
+├── frontend/dashboard.py        # Streamlit dashboard
+├── scripts/                     # ingestion, seed, provider, and bootstrap helpers
+├── tests/                       # unit and workflow integration tests
+├── web/                         # additional Next.js client
+├── Dockerfile                   # directly executable API image
+├── docker-compose.yml           # local API and dashboard runtime
+└── requirements.txt             # Python dependencies
+```
+
+## Run Locally
+
+### Python
 
 ```bash
+cp .env.example .env
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-API docs are available at:
+The API is available at `http://localhost:8000`, with OpenAPI documentation at `http://localhost:8000/docs`.
 
-```text
-http://localhost:8000/docs
-```
-
-### Environment
-
-Create a local `.env` file from the example:
+### Docker Compose
 
 ```bash
-cp .env.example .env
+docker compose up --build
 ```
 
-NVIDIA NIM development setup:
+This starts the API and Streamlit dashboard using the repository's local development configuration.
 
-```env
-LLM_PROVIDER=nvidia
-NVIDIA_API_KEY=your_nvidia_api_key_here
-NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_MODEL=z-ai/glm-5.2
-```
-
-Optional OpenAI setup:
-
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4.1-mini
-```
-
-`.env` and `.venv/` are ignored by Git. `.env.example` is tracked and should contain placeholders only.
-
-If the configured LLM request fails or returns invalid JSON, `analyze_job_text()` falls back to `analyze_job_text_rule_based()`.
-
-### Fetch Jobs
-
-```bash
-python scripts/fetch_greenhouse_jobs.py
-```
-
-### Streamlit Dashboard
-
-```bash
-streamlit run frontend/dashboard.py
-```
-
-```text
-http://localhost:8501
-```
-
-### Next.js Client
-
-```bash
-cd web
-npm install
-npm run dev
-```
-
-```text
-http://localhost:3000
-```
-
-Optional frontend environment variable:
-
-```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-```
-
-## Docker Compose
-
-```bash
-docker compose config
-docker compose up --build -d
-curl http://localhost:8000/health
-curl http://localhost:8000/health/db
-docker compose down
-```
-
-Docker Compose starts:
-
-- FastAPI API at `http://localhost:8000`
-- Streamlit dashboard at `http://localhost:8501`
-
-The Next.js client runs separately from `web/`.
-
-## Testing
+### Tests
 
 ```bash
 pytest -q
+docker compose config --quiet
 ```
 
-If `pytest` is not on PATH but the project virtual environment exists:
+Provider credentials are optional for the automated suite because LLM failure and fallback behavior are tested without requiring a live paid call.
 
-```bash
-.venv/bin/pytest -q
-```
+## Operational Lessons
 
-Current tests cover:
+- A passing local application is not runtime evidence; platform state, traffic, HTTPS behavior, and telemetry must all be checked independently.
+- Subscription policy is an architecture constraint. East Asia was selected only after the student subscription rejected both Korea regions.
+- An image should define its own authoritative startup process. Platform-specific command overrides made deployment behavior harder to reason about.
+- Revision creation is not traffic readiness. Verification must wait for the latest revision to become Active and Healthy and to receive the intended traffic.
+- GitHub OIDC removes a long-lived Azure deployment secret, but it does not remove the need for narrow Azure RBAC scopes and exact federation subjects.
+- A Key Vault reference proves configuration only when identity, RBAC, revision provisioning, environment mapping, and runtime behavior are verified together.
+- A failed request record is not the same as exception telemetry. The exception table and correlation identifiers must be queried directly.
+- Observability claims should match the telemetry actually produced. In-process dependency spans do not prove visibility into every external integration.
+- Scale-to-zero saves development cost but creates a visible cold-start tradeoff.
 
-- deterministic recommendation scoring
-- recommendation response building
-- location parsing
-- health endpoints
-- job upsert lifecycle
-- changed job re-analysis lifecycle
-- LLM exception and invalid JSON fallback behavior without external API calls
-- current missing-field policy for valid but incomplete LLM JSON
-- provider configuration without live paid or NVIDIA API calls
-- service-level backend workflow from job storage through analysis, recommendation, and response schema validation
+## Scope and Future Considerations
 
-Notable gaps:
+This repository demonstrates a validated development deployment and its operating controls. It is not represented as production-ready, highly available, or enterprise-scale. The following are reasonable future considerations, not work included in this completed project:
 
-- end-to-end recommendation route response validation with a populated database
-- Greenhouse API failure paths
-- Streamlit and Next.js UI behavior
-- Docker runtime smoke test in CI
+- replace local/ephemeral SQLite with a managed, backed-up data store;
+- add authentication and authorization for public application endpoints;
+- execute a meaningful live Key Vault rotation when a distinct replacement provider credential exists;
+- expand external dependency tracing using normal business traffic;
+- define service-level objectives and introduce alerts or dashboards only when operational requirements justify them;
+- evaluate minimum replicas or other availability controls against cold-start cost;
+- add infrastructure as code, disaster recovery, retention, and image lifecycle policies;
+- reassess region, capacity, privacy, and telemetry sampling for a real production workload.
 
-GitHub Actions is configured in `.github/workflows/test.yml` for pull requests and pushes to `main`. It installs `requirements.txt`, runs `pytest -q`, and validates `docker compose config`. It does not call a real LLM API and does not start Docker Compose services.
+These items are intentionally not implemented here. They would require new product, platform, cost, or reliability decisions beyond the project's validated operating scope.
 
-## Operations
+## Documentation
 
-Operational notes for local development are in [docs/operations.md](docs/operations.md).
+### Architecture and Operations
 
-Useful commands:
+- [Application and cloud architecture](docs/architecture.md)
+- [Operations guide](docs/operations.md)
+- [Recommendation scoring](docs/scoring-system.md)
 
-```bash
-docker compose ps
-docker compose logs -f api
-docker compose logs -f dashboard
-python scripts/verify_phase2.py
-```
+### Deployment, Security, and Runtime Evidence
 
-SQLite data is stored in `jobs.db` at the repository root. The app uses `Base.metadata.create_all()` for local development and does not include Alembic migrations.
+- [Container deployment design](docs/phase1-task4-deployment.md)
+- [Container runtime evidence](docs/phase1-runtime-evidence.md)
+- [Implemented security architecture](docs/phase2-security-architecture.md)
+- [Security runtime evidence](docs/phase2-runtime-evidence.md)
+- [Secret rotation runbook](docs/phase2-secret-rotation-runbook.md)
+- [Observability architecture decision](docs/phase3-observability-architecture.md)
+- [Application telemetry evidence](docs/phase3-runtime-evidence.md)
+- [Final observability review](docs/phase3-completion-summary.md)
 
-## Deeper Documentation
+The evidence documents retain their original phase-based filenames as an audit trail. This README is the consolidated final project narrative.
 
-- [Architecture](docs/architecture.md)
-- [Scoring System](docs/scoring-system.md)
-- [Operations](docs/operations.md)
+## License
 
-## Future Improvements
-
-- Add Alembic migrations
-- Expand GitHub Actions with linting or type checks if those tools are introduced
-- Add endpoint-level integration tests with FastAPI dependency overrides
-- Move persistence from SQLite to PostgreSQL for non-local deployments
-- Add pagination, filtering, and ordering to list endpoints
-- Add authentication before exposing user-specific data in a shared environment
-- Add production logging, metrics, backup, and deployment runbooks before operating this beyond local/demo use
+This project is licensed under the [MIT License](LICENSE).

@@ -31,28 +31,28 @@ the Phase 1 scope.
 
 | Evidence | Purpose | Verification Method | Observed Result | Evidence Reference |
 | --- | --- | --- | --- | --- |
-| GitHub Actions success | Confirm that the automatic deployment pipeline completed its required gates. | Review the deployment workflow run for commit `131a119f798cc281f47f64e8990b93fe27d4555c`. | PASS. OIDC authentication, test and Compose gates, image publication, Container Apps deployment, revision verification, and HTTPS health verification completed successfully. | To be attached |
-| Docker image build | Confirm that the application was packaged as a deployable container image. | Review the Buildx step in the successful GitHub Actions run. | PASS. The workflow built the deployment image successfully. | To be attached |
-| Docker image push | Confirm that the built image was published to the configured registry. | Review the image push output in the successful GitHub Actions run. | PASS. The image used by the running revision was pushed to `aijobscoutms2026.azurecr.io`. | To be attached |
-| ACR repository | Confirm that the deployment artifact is stored in the intended repository. | Inspect the ACR repository list and the deployed image reference. | PASS. Repository `ai-job-scout` exists under `aijobscoutms2026.azurecr.io`. | To be attached |
-| SHA image tag | Establish source-to-runtime traceability. | Compare the deployed image tag with the Git commit recorded by the workflow. | PASS. The deployment uses `aijobscoutms2026.azurecr.io/ai-job-scout:131a119f798cc281f47f64e8990b93fe27d4555c`. | To be attached |
-| Azure Container Apps deployment | Confirm that Azure accepted and provisioned the deployment. | Inspect the Container App and its latest revision in Azure. | PASS. `ca-ai-jobscout-dev` is deployed in `cae-ai-jobscout-dev`, East Asia. | To be attached |
-| Latest Revision | Identify the revision created by the validated deployment. | Query `properties.latestRevisionName` for the Container App. | PASS. The latest revision is `ca-ai-jobscout-dev--0000005`. | To be attached |
-| Active Revision | Confirm that the revision is eligible to serve requests. | Query `properties.active` for revision `ca-ai-jobscout-dev--0000005`. | PASS. The revision is active. | To be attached |
-| Traffic allocation | Confirm that application traffic is routed to the validated revision. | Inspect the Container App ingress traffic configuration. | PASS. Revision `ca-ai-jobscout-dev--0000005` receives 100% of application traffic. | To be attached |
-| Replica count | Confirm that the validated revision has a provisioned replica. | Inspect the replica count for revision `ca-ai-jobscout-dev--0000005`. | PASS. The revision has one replica. | To be attached |
-| Healthy Revision | Confirm that the Azure platform reports the revision as healthy. | Query `properties.healthState` for revision `ca-ai-jobscout-dev--0000005`. | PASS. `healthState` is `Healthy`. | To be attached |
-| HTTPS endpoint | Confirm that the public application endpoint is reachable over TLS. | Send an HTTPS request to `https://ca-ai-jobscout-dev.kindbay-14c42b35.eastasia.azurecontainerapps.io/health`. | PASS. The endpoint is reachable over HTTPS and returns a successful response. | To be attached |
-| Health endpoint | Confirm that the deployed API reports its expected service health. | Inspect the response body from `GET /health`. | PASS. Response: `{"status":"ok","service":"ai-job-scout-api"}`. | To be attached |
-| Functional validation | Confirm the deployed service can process the Phase 1 runtime validation request. | Invoke the public health route and validate both HTTP success and the expected JSON payload. | PASS. The live deployment returned the expected API health payload. This validation is limited to the Phase 1 health contract. | To be attached |
-| pytest | Confirm that the existing automated Python test suite passed before deployment. | Review the `pytest -q` gate in the successful deployment workflow. | PASS. 25 passed, 1 existing warning. | To be attached |
-| docker compose config | Confirm that the existing Compose definition remained valid. | Run `docker compose config --quiet`. | PASS. `docker compose config --quiet` completed successfully. | To be attached |
+| GitHub Actions success | Confirm that the automatic deployment pipeline completed its required gates. | Review the deployment workflow run for commit `131a119f798cc281f47f64e8990b93fe27d4555c`. | PASS. OIDC authentication, test and Compose gates, image publication, Container Apps deployment, revision verification, and HTTPS health verification completed successfully. | Recorded inline and summarized in the [runtime checklist](#6-runtime-verification-checklist); external workflow artifact not retained. |
+| Docker image build | Confirm that the application was packaged as a deployable container image. | Review the Buildx step in the successful GitHub Actions run. | PASS. The workflow built the deployment image successfully. | Verified by the workflow result and observed result above; external build log not retained. |
+| Docker image push | Confirm that the built image was published to the configured registry. | Review the image push output in the successful GitHub Actions run. | PASS. The image used by the running revision was pushed to `aijobscoutms2026.azurecr.io`. | Verified by the workflow result and observed result above; external push log not retained. |
+| ACR repository | Confirm that the deployment artifact is stored in the intended repository. | Inspect the ACR repository list and the deployed image reference. | PASS. Repository `ai-job-scout` exists under `aijobscoutms2026.azurecr.io`. | Recorded inline and in the [runtime checklist](#6-runtime-verification-checklist). |
+| SHA image tag | Establish source-to-runtime traceability. | Compare the deployed image tag with the Git commit recorded by the workflow. | PASS. The deployment uses `aijobscoutms2026.azurecr.io/ai-job-scout:131a119f798cc281f47f64e8990b93fe27d4555c`. | Recorded inline and in the [runtime summary](#7-runtime-summary). |
+| Azure Container Apps deployment | Confirm that Azure accepted and provisioned the deployment. | Inspect the Container App and its latest revision in Azure. | PASS. `ca-ai-jobscout-dev` is deployed in `cae-ai-jobscout-dev`, East Asia. | Recorded inline and summarized in the [Phase 1 completion evidence](phase1-completion-summary.md#3-runtime-evidence-summary). |
+| Latest Revision | Identify the revision created by the validated deployment. | Query `properties.latestRevisionName` for the Container App. | PASS. The latest revision is `ca-ai-jobscout-dev--0000005`. | Verified by the command and observed result above; revision repeated in the [runtime summary](#7-runtime-summary). |
+| Active Revision | Confirm that the revision is eligible to serve requests. | Query `properties.active` for revision `ca-ai-jobscout-dev--0000005`. | PASS. The revision is active. | Verified by the command and observed result above and recorded in the [runtime checklist](#6-runtime-verification-checklist). |
+| Traffic allocation | Confirm that application traffic is routed to the validated revision. | Inspect the Container App ingress traffic configuration. | PASS. Revision `ca-ai-jobscout-dev--0000005` receives 100% of application traffic. | Verified by the observed result above and recorded in the [runtime summary](#7-runtime-summary). |
+| Replica count | Confirm that the validated revision has a provisioned replica. | Inspect the replica count for revision `ca-ai-jobscout-dev--0000005`. | PASS. The revision has one replica. | Verified by the command and observed result above; no external screenshot retained. |
+| Healthy Revision | Confirm that the Azure platform reports the revision as healthy. | Query `properties.healthState` for revision `ca-ai-jobscout-dev--0000005`. | PASS. `healthState` is `Healthy`. | Verified by the command and observed result above and recorded in the [runtime checklist](#6-runtime-verification-checklist). |
+| HTTPS endpoint | Confirm that the public application endpoint is reachable over TLS. | Send an HTTPS request to `https://ca-ai-jobscout-dev.kindbay-14c42b35.eastasia.azurecontainerapps.io/health`. | PASS. The endpoint is reachable over HTTPS and returns a successful response. | Recorded inline and in the [runtime checklist](#6-runtime-verification-checklist); external screenshot not retained. |
+| Health endpoint | Confirm that the deployed API reports its expected service health. | Inspect the response body from `GET /health`. | PASS. Response: `{"status":"ok","service":"ai-job-scout-api"}`. | Recorded inline and in the [runtime checklist](#6-runtime-verification-checklist). |
+| Functional validation | Confirm the deployed service can process the Phase 1 runtime validation request. | Invoke the public health route and validate both HTTP success and the expected JSON payload. | PASS. The live deployment returned the expected API health payload. This validation is limited to the Phase 1 health contract. | Verified by the HTTPS command and observed result above; scope recorded in the [runtime summary](#7-runtime-summary). |
+| pytest | Confirm that the existing automated Python test suite passed before deployment. | Review the `pytest -q` gate in the successful deployment workflow. | PASS. 25 passed, 1 existing warning. | Recorded inline and in the [runtime checklist](#6-runtime-verification-checklist); external workflow log not retained. |
+| docker compose config | Confirm that the existing Compose definition remained valid. | Run `docker compose config --quiet`. | PASS. `docker compose config --quiet` completed successfully. | Verified by the command and observed result above and recorded in the [runtime checklist](#6-runtime-verification-checklist). |
 
 ---
 
 ## 3. Incident Log
 
-**Incident 1 — Azure region policy rejection**
+### Incident 1 — Azure region policy rejection
 
 | Field | Detail |
 | --- | --- |
@@ -63,7 +63,7 @@ the Phase 1 scope.
 | Verification | The Container Apps environment and application were successfully deployed in East Asia. |
 | Lessons Learned | Region eligibility must be checked against the active subscription policy before resource creation. Subscription policy, not geographic preference, determines the usable deployment regions. |
 
-**Incident 2 — Interactive Azure bootstrap blocked by MFA**
+### Incident 2 — Interactive Azure bootstrap blocked by MFA
 
 | Field | Detail |
 | --- | --- |
@@ -74,7 +74,7 @@ the Phase 1 scope.
 | Verification | The final GitHub Actions deployment authenticated through OIDC and successfully pushed to ACR and deployed to Container Apps, demonstrating that the required access was subsequently available. |
 | Lessons Learned | Azure bootstrap procedures must be idempotent and safe to rerun after Conditional Access interrupts a partially completed setup. Interactive administrative access and workload OIDC authentication have different operational requirements. |
 
-**Incident 3 — Azure Container Apps startup override passed malformed arguments**
+### Incident 3 — Azure Container Apps startup override passed malformed arguments
 
 | Field | Detail |
 | --- | --- |
@@ -85,7 +85,7 @@ the Phase 1 scope.
 | Verification | A later revision started without the malformed platform startup override and served the public health endpoint successfully. |
 | Lessons Learned | Platform startup overrides must not be used when they alter the intended command and argument boundaries. For this workload, the Azure command and args fields must remain unset. |
 
-**Incident 4 — Container image lacked a default Dockerfile command**
+### Incident 4 — Container image lacked a default Dockerfile command
 
 | Field | Detail |
 | --- | --- |
@@ -96,7 +96,7 @@ the Phase 1 scope.
 | Verification | A later revision started from the image-defined command and served the public health endpoint successfully. |
 | Lessons Learned | The deployable image must define its own default process so it can run consistently without platform-specific startup overrides. |
 
-**Incident 5 — First startup-override removal attempt remained configured**
+### Incident 5 — First startup-override removal attempt remained configured
 
 | Field | Detail |
 | --- | --- |
@@ -107,7 +107,7 @@ the Phase 1 scope.
 | Verification | The succeeding deployment used the Dockerfile command and activated without the invalid empty-string override. |
 | Lessons Learned | For Azure CLI list arguments, an empty string value and an empty list are operationally different. The resulting Azure resource template must be inspected after configuration changes. |
 
-**Incident 6 — Healthy deployment reported as workflow failure**
+### Incident 6 — Healthy deployment reported as workflow failure
 
 | Field | Detail |
 | --- | --- |
@@ -118,7 +118,7 @@ the Phase 1 scope.
 | Verification | The final deployment workflow passed with the revision active and Healthy, followed by a successful public `/health` response. |
 | Lessons Learned | Container Apps deployment readiness must use stable revision signals. Active state plus platform health, followed by an external HTTPS request, avoids false failures caused by an absent optional running-state value. |
 
-**Incident 7 — Temporary local HTTPS timeout after deployment**
+### Incident 7 — Temporary local HTTPS timeout after deployment
 
 | Field | Detail |
 | --- | --- |

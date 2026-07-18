@@ -28,8 +28,8 @@ The API can also receive jobs directly through `POST /jobs/`, which calls `creat
 2. `scripts/fetch_greenhouse_jobs.py` converts each item into a `JobCreate` payload.
 3. `upsert_job()` stores a new row or updates an existing row by URL and content hash.
 4. `POST /analysis/run` selects active or updated jobs that have no current analysis.
-5. `analyze_job_text()` asks the OpenAI chat API for structured JSON.
-6. If the model call or JSON parsing fails, `analyze_job_text_rule_based()` returns a simpler deterministic analysis.
+5. `analyze_job_text()` asks the selected OpenAI-compatible provider for structured JSON. The Azure runtime currently selects NVIDIA through the application default.
+6. If a configured model call or JSON parsing fails, `analyze_job_text_rule_based()` returns a simpler deterministic analysis. Missing provider configuration fails before that fallback block.
 7. `AnalysisRepository.save_analysis()` writes `JobAnalysis`, sets `last_analyzed_at`, and restores updated jobs to `ACTIVE`.
 8. `POST /recommendations/run` loads analyzed jobs, builds `RecommendationContext`, scores each job, and returns sorted recommendation dictionaries.
 
@@ -102,7 +102,47 @@ The current code commits inside repository/service functions:
 
 Greenhouse requests use `requests.get(..., timeout=15)` and `raise_for_status()`. Callers should expect network and HTTP exceptions.
 
-OpenAI analysis failures are contained inside `analyze_job_text()`. Any exception from the client call, response parsing, or JSON decoding triggers `analyze_job_text_rule_based()`. The fallback summary includes the exception type as a fallback reason.
+Model-call, response-parsing, and JSON-decoding failures are contained inside
+`analyze_job_text()` and trigger `analyze_job_text_rule_based()`. Provider
+configuration is built before that exception handler, so a missing credential
+raises a configuration error rather than entering the fallback. The fallback
+summary includes the exception type for failures that occur inside the handled
+model-call block.
+
+## Azure Runtime Security
+
+The Phase 2 Azure deployment uses a dedicated Key Vault, a Container App
+system-assigned managed identity, Azure RBAC, and a Container Apps Key Vault
+secret reference. The runtime path is:
+
+```text
+Key Vault nvidia-api-key
+  -> Container App system identity with Key Vault Secrets User
+  -> Container Apps Key Vault-backed secret nvidia-api-key
+  -> NVIDIA_API_KEY environment secretRef
+  -> existing app/config.py environment-variable contract
+```
+
+The GitHub OIDC deployment identity, Container Apps Environment ACR-pull
+identity, and Container App runtime identity remain separate. The implemented
+design and evidence are documented in
+[`phase2-security-architecture.md`](phase2-security-architecture.md) and
+[`phase2-runtime-evidence.md`](phase2-runtime-evidence.md).
+
+## Azure Runtime Observability
+
+Phase 3 adds one workspace-based Application Insights resource linked to the
+existing Log Analytics workspace. `app/telemetry.py` initializes the Azure
+Monitor OpenTelemetry distribution before FastAPI is imported when
+`APPLICATIONINSIGHTS_CONNECTION_STRING` is present. Requests, result codes,
+durations, exceptions, correlation, and automatically available dependencies
+are collected without route- or business-layer telemetry calls.
+
+The final verified runtime is revision `ca-ai-jobscout-dev--0000011`, using
+image `phase3-observability-20260719-01`. The architecture decision and runtime
+proof are documented in
+[`phase3-observability-architecture.md`](phase3-observability-architecture.md)
+and [`phase3-runtime-evidence.md`](phase3-runtime-evidence.md).
 
 ## Clients
 
@@ -122,4 +162,9 @@ The Next.js app under `web/` is an additional client. It fetches jobs and runs r
 
 ## Future Production Work
 
-Before using this beyond local/demo scope, the project would need migrations, managed database configuration, authentication, broader CI checks, deployment automation, secrets management, structured operational metrics, backup/restore procedures, and a clear runbook for external API failures.
+Before using this beyond local/demo scope, the project would still need
+migrations, managed database configuration, authentication, broader CI checks,
+backup/restore procedures, and a clear runbook for external API failures.
+Deployment automation, Azure runtime secret management, and essential request
+observability are implemented; meaningful live secret rotation remains
+deferred until a distinct replacement credential exists.
