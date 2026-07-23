@@ -1,0 +1,38 @@
+# Replace with the target subscription. This all-zero UUID is intentionally fake.
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+location         = "japanwest"
+environment_name = "iac-test"
+
+resource_group_name            = "rg-ai-jobscout-iac-test-jw"
+acr_name                       = "aijobscoutiactestjwreplace"
+log_analytics_workspace_name   = "law-ai-jobscout-iac-test-jw"
+application_insights_name      = "appi-ai-jobscout-iac-test-jw"
+container_app_environment_name = "cae-ai-jobscout-iac-test-jw"
+container_app_name             = "ca-ai-jobscout-iac-test-jw"
+key_vault_name                 = "kv-iac-test-jw-replace"
+
+# ACR and Key Vault names are globally unique. Recheck and replace them before planning.
+# The image must be copied into the validation ACR outside Terraform before app creation.
+container_image        = "aijobscoutiactestjwreplace.azurecr.io/ai-job-scout@sha256:0cf8c993afe2c5d6eeeceb0786d5d406f85b7773ecf6365ba347fbee2302d14a"
+container_image_digest = "sha256:0cf8c993afe2c5d6eeeceb0786d5d406f85b7773ecf6365ba347fbee2302d14a"
+
+container_cpu    = 0.5
+container_memory = "1Gi"
+min_replicas     = 0
+max_replicas     = 10
+
+# Gate 3 staged convergence controls. Final steady state sets both to true.
+deploy_container_app               = true
+enable_key_vault_secret_reference  = true
+
+# Do not add NVIDIA_API_KEY or any other secret value to this file.
+common_tags = {
+  Project     = "AIJobScout"
+  Environment = "IaCValidation"
+  ManagedBy   = "Terraform"
+  Purpose     = "TerraformReproducibility"
+  CostCenter  = "Personal"
+}
+
+nvidia_secret_name = "nvidia-api-key"
