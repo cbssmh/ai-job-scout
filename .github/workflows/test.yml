@@ -6,8 +6,12 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: required-ci
     runs-on: ubuntu-latest
 
     steps:
