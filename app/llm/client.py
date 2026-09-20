@@ -4,6 +4,9 @@ from openai import OpenAI
 
 from app.config import Settings, settings
 
+PROVIDER_TIMEOUT_SECONDS = 30.0
+PROVIDER_MAX_RETRIES = 0
+
 
 @dataclass(frozen=True)
 class LLMClientConfig:
@@ -56,6 +59,8 @@ def get_llm_client_config(config: Settings | None = None) -> LLMClientConfig:
             client=OpenAI(
                 base_url=base_url,
                 api_key=api_key,
+                timeout=PROVIDER_TIMEOUT_SECONDS,
+                max_retries=PROVIDER_MAX_RETRIES,
             ),
         )
 
@@ -74,7 +79,11 @@ def get_llm_client_config(config: Settings | None = None) -> LLMClientConfig:
         return LLMClientConfig(
             provider="openai",
             model=model,
-            client=OpenAI(api_key=api_key),
+            client=OpenAI(
+                api_key=api_key,
+                timeout=PROVIDER_TIMEOUT_SECONDS,
+                max_retries=PROVIDER_MAX_RETRIES,
+            ),
         )
 
     raise ValueError(

@@ -27,11 +27,22 @@ The API can also receive jobs directly through `POST /jobs/`, which calls `creat
 1. `fetch_greenhouse_jobs()` requests Greenhouse jobs with `content=true` and keeps titles matching engineering-related keywords.
 2. `scripts/fetch_greenhouse_jobs.py` converts each item into a `JobCreate` payload.
 3. `upsert_job()` stores a new row or updates an existing row by URL and content hash.
-4. `POST /analysis/run` selects active or updated jobs that have no current analysis.
+4. `POST /analysis/run` accepts a limit from 1 through 20 and selects active,
+   updated, or explicitly degraded jobs eligible for analysis.
 5. `analyze_job_text()` asks the selected OpenAI-compatible provider for structured JSON. The Azure runtime currently selects NVIDIA through the application default.
-6. If a configured model call or JSON parsing fails, `analyze_job_text_rule_based()` returns a simpler deterministic analysis. Missing provider configuration fails before that fallback block.
-7. `AnalysisRepository.save_analysis()` writes `JobAnalysis`, sets `last_analyzed_at`, and restores updated jobs to `ACTIVE`.
-8. `POST /recommendations/run` loads analyzed jobs, builds `RecommendationContext`, scores each job, and returns sorted recommendation dictionaries.
+6. If a configured model call, JSON parsing, or required-field validation fails,
+   `analyze_job_text_rule_based()` returns a simpler deterministic analysis. The
+   result is exposed as `degraded_fallback` and remains eligible for a later
+   intentional analysis request. Missing provider configuration fails before
+   that fallback block.
+7. `AnalysisRepository.save_analysis()` writes `JobAnalysis`, sets
+   `last_analyzed_at`, and restores updated jobs to `ACTIVE`.
+8. The analysis response separates provider-completed, degraded, and failed
+   jobs and reports how much eligible work remains. Earlier per-job commits are
+   preserved when a later unexpected failure stops the batch.
+9. `POST /recommendations/run` loads analyzed jobs, builds
+   `RecommendationContext`, scores each job, and returns sorted recommendation
+   dictionaries.
 
 ## API, Service, Repository, Domain Flow
 
@@ -96,7 +107,9 @@ The current code commits inside repository/service functions:
 - `upsert_job()` commits created, unchanged, and updated paths.
 - `AnalysisRepository.save_analysis()` commits analysis writes and job status changes.
 
-`analyze_all_jobs()` rolls back and re-raises if a job analysis write fails. There is no external unit-of-work abstraction yet.
+`analyze_all_jobs()` rolls back the failing job, stops the batch, and returns a
+structured partial or failed outcome while preserving earlier per-job commits.
+There is no external unit-of-work abstraction yet.
 
 ## External API Failure Behavior
 
@@ -105,9 +118,15 @@ Greenhouse requests use `requests.get(..., timeout=15)` and `raise_for_status()`
 Model-call, response-parsing, and JSON-decoding failures are contained inside
 `analyze_job_text()` and trigger `analyze_job_text_rule_based()`. Provider
 configuration is built before that exception handler, so a missing credential
-raises a configuration error rather than entering the fallback. The fallback
-summary includes the exception type for failures that occur inside the handled
-model-call block.
+becomes a structured retryable batch failure rather than entering the fallback.
+The fallback summary includes the exception type for failures that occur inside
+the handled model-call block. Provider clients use a 30-second timeout and zero
+automatic transport retries.
+
+Only one analysis request may own provider execution in a process. A competing
+request receives HTTP 409 before provider work. This is deliberately a
+process-local boundary. Cross-process and cross-replica duplicate work is not
+prevented.
 
 ## Azure Runtime Security
 
@@ -152,9 +171,16 @@ The Next.js app under `web/` is an additional client. It fetches jobs and runs r
 
 ## Current Limitations
 
-- SQLite is configured as a local repository-root `jobs.db` file.
+- SQLite is configured as a local repository-root `jobs.db` file and remains
+  replica-local in the current cloud architecture.
+- Durable/shared persistence is not implemented.
 - `Base.metadata.create_all()` is used instead of migrations.
 - There is no authentication or authorization.
+- Policy designates `POST /jobs/` and `POST /analysis/run` as operator-only,
+  but enforcement mechanism selection remains deferred.
+- Rate limiting is not implemented.
+- Phase 2B application controls are locally verified; this document does not
+  claim they are deployed to Azure.
 - There is no background worker; analysis runs synchronously through the API request.
 - Streamlit and Next.js behavior is not covered by automated tests.
 - Greenhouse API failures and successful OpenAI response shape variations are not fully covered by current tests.

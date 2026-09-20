@@ -5,6 +5,7 @@ from app.llm.client import LLMClientConfig
 
 
 REQUIRED_ANALYSIS_FIELDS = {
+    "analysis_outcome",
     "role",
     "tech_stack",
     "experience_level",
@@ -69,6 +70,7 @@ def test_analyze_job_text_uses_rule_based_fallback_when_llm_client_raises(monkey
     assert result["tech_stack"] == "python, fastapi, docker"
     assert result["language_requirement"] == "English required/preferred"
     assert result["visa_sponsorship"] == "possible"
+    assert result["analysis_outcome"] == "degraded_fallback"
     assert "Rule-based fallback" in result["summary"]
     assert "LLM fallback reason: RuntimeError" in result["summary"]
 
@@ -91,11 +93,12 @@ def test_analyze_job_text_uses_rule_based_fallback_when_llm_returns_invalid_json
     assert result["role"] == "Backend Engineer"
     assert result["tech_stack"] == "python, sql"
     assert result["language_requirement"] == "English required/preferred"
+    assert result["analysis_outcome"] == "degraded_fallback"
     assert "Rule-based fallback" in result["summary"]
     assert "LLM fallback reason: JSONDecodeError" in result["summary"]
 
 
-def test_analyze_job_text_missing_llm_fields_uses_current_default_policy(monkeypatch):
+def test_analyze_job_text_missing_llm_fields_uses_degraded_fallback(monkeypatch):
     completions = FakeCompletions(content='{"role": "Backend Engineer"}')
     monkeypatch.setattr(
         job_analyst,
@@ -110,13 +113,14 @@ def test_analyze_job_text_missing_llm_fields_uses_current_default_policy(monkeyp
 
     assert completions.called is True
     assert set(result) == REQUIRED_ANALYSIS_FIELDS
+    assert result["analysis_outcome"] == "degraded_fallback"
     assert result["role"] == "Backend Engineer"
-    assert result["tech_stack"] == ""
+    assert result["tech_stack"] == "python, fastapi"
     assert result["experience_level"] == "unknown"
-    assert result["language_requirement"] == "unknown"
+    assert result["language_requirement"] == "English required/preferred"
     assert result["visa_sponsorship"] == "unknown"
-    assert result["summary"] == "No summary"
-    assert "Rule-based fallback" not in result["summary"]
+    assert "Rule-based fallback" in result["summary"]
+    assert "LLM fallback reason: ValueError" in result["summary"]
 
 
 def test_rule_based_fallback_contract_contains_downstream_fields():
@@ -130,4 +134,5 @@ def test_rule_based_fallback_contract_contains_downstream_fields():
     assert result["tech_stack"] == "react, typescript, node.js"
     assert result["language_requirement"] == "English required/preferred"
     assert result["visa_sponsorship"] == "possible"
+    assert result["analysis_outcome"] == "degraded_fallback"
     assert result["summary"].startswith("Rule-based fallback:")

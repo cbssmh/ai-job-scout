@@ -26,6 +26,26 @@ def test_nvidia_provider_config_succeeds_with_valid_settings():
     mock_openai.assert_called_once_with(
         base_url="https://integrate.api.nvidia.com/v1",
         api_key="test-nvidia-key",
+        timeout=30.0,
+        max_retries=0,
+    )
+
+
+def test_openai_provider_config_uses_explicit_timeout_and_zero_retries():
+    config = Settings(
+        llm_provider="openai",
+        openai_api_key="test-openai-key",
+        openai_model="gpt-4.1-mini",
+    )
+
+    with patch("app.llm.client.OpenAI") as mock_openai:
+        result = get_llm_client_config(config)
+
+    assert result.provider == "openai"
+    mock_openai.assert_called_once_with(
+        api_key="test-openai-key",
+        timeout=30.0,
+        max_retries=0,
     )
 
 

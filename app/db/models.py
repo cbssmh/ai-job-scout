@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime
 from datetime import datetime
 from app.db.database import Base
+from app.domain.analysis_outcome import outcome_from_summary
 
 
 class Job(Base):
@@ -41,3 +42,7 @@ class JobAnalysis(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     job = relationship("Job")
+
+    @property
+    def analysis_outcome(self) -> str:
+        return outcome_from_summary(self.summary)

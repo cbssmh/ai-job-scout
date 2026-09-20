@@ -79,10 +79,10 @@ All five questions were validated against the deployed v2.0.0 runtime.
 | Container delivery | `linux/amd64` image stored in Azure Container Registry and deployed to Azure Container Apps |
 | Continuous deployment | GitHub Actions uses OpenID Connect, deploys traceable images, waits for a healthy revision, and verifies public HTTPS health |
 | Runtime secrets | NVIDIA credential stored in Azure Key Vault and delivered through a versionless Key Vault reference using managed identity |
-| Identity boundaries | GitHub deployment, ACR pull, and application runtime responsibilities remain separate and scoped |
+| Identity separation | GitHub deployment, ACR pull, and application runtime use separate identities; least-privilege remediation is not claimed here |
 | Application observability | Azure Monitor OpenTelemetry exports request, exception, dependency, duration, and W3C correlation telemetry to Application Insights |
 | Runtime proof | Final revision was Active, Healthy, Provisioned, latest-ready, served 100% of traffic, and returned HTTP 200 from `/health` |
-| Regression protection | 27 automated tests passed; Docker Compose configuration and repository formatting checks also passed |
+| Regression protection | 51 automated tests passed; Docker Compose configuration and repository formatting checks also passed |
 
 ---
 
@@ -176,7 +176,8 @@ The GitHub deployment identity has the Azure roles required for:
 - pushing images to Azure Container Registry;
 - and deploying revisions to Azure Container Apps.
 
-Roles are assigned at their intended scopes rather than through reusable Azure client secrets.
+These are ACR push and Container Apps management roles. Further least-privilege
+refinement remains future work; no reusable Azure client secret is used.
 
 ### Image pull
 
@@ -329,12 +330,13 @@ Cloud Operations Edition operates the existing application without changing its 
 The application includes:
 
 - Greenhouse job ingestion with keyword filtering;
-- SQLite persistence through SQLAlchemy;
+- replica-local SQLite storage through SQLAlchemy;
 - content hashing for duplicate and update detection;
 - separate job and job-analysis records;
 - LLM-backed extraction through an OpenAI-compatible provider boundary;
-- deterministic rule-based fallback when LLM output is unavailable or invalid;
+- deterministic, explicitly degraded rule-based fallback when LLM output is unavailable or invalid;
 - re-analysis of changed postings;
+- bounded analysis batches with structured completed, degraded, failed, and remaining-work outcomes;
 - explainable recommendation scoring using skills, language, visa, and location signals;
 - FastAPI endpoints for jobs, analysis, recommendations, and health;
 - a Streamlit dashboard;
@@ -429,6 +431,19 @@ docker compose config --quiet
 Provider credentials are optional for the automated suite because LLM failure and fallback behavior are tested without requiring a live paid provider call.
 
 ---
+
+Analysis requests accept limits from `1` through `20`. Provider calls use an
+explicit 30-second timeout with automatic SDK retries disabled, and one process
+admits only one active analysis request at a time. Rule-based fallback results
+are reported as degraded and remain eligible for a later intentional analysis
+request. These work controls do not implement authentication: the approved
+policy requires operator-only access to `POST /jobs/` and
+`POST /analysis/run`, but mechanism selection remains deferred. These Phase 2B
+controls are verified locally; this documentation does not claim they are
+deployed to Azure. The lock is process-local and does not prevent cross-process
+or cross-replica duplicate work. SQLite remains replica-local in the current
+cloud architecture; rate limiting and durable/shared persistence are not
+implemented.
 
 ## Operational Lessons
 

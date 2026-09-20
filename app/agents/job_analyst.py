@@ -1,4 +1,9 @@
 import json
+from app.domain.analysis_outcome import (
+    ANALYSIS_OUTCOME_DEGRADED_FALLBACK,
+    ANALYSIS_OUTCOME_PROVIDER_SUCCESS,
+    FALLBACK_SUMMARY_PREFIX,
+)
 from app.llm.client import LLMClientConfig, get_llm_client_config
 
 SYSTEM_PROMPT = """
@@ -107,12 +112,13 @@ def analyze_job_text_rule_based(text: str, title: str = "") -> dict:
         visa = "possible"
 
     summary = (
-        f"Rule-based fallback: role={role}, "
+        f"{FALLBACK_SUMMARY_PREFIX} role={role}, "
         f"tech={', '.join(found_tech)}, "
         f"experience={experience}"
     )
 
     return {
+        "analysis_outcome": ANALYSIS_OUTCOME_DEGRADED_FALLBACK,
         "role": role,
         "tech_stack": ", ".join(found_tech),
         "experience_level": experience,
@@ -147,12 +153,34 @@ Return JSON only.
         content = response.choices[0].message.content or ""
         content = _clean_json_text(content)
         data = json.loads(content)
+        if not isinstance(data, dict):
+            raise ValueError("Provider response must be a JSON object")
+
+        required_fields = {
+            "role",
+            "tech_stack",
+            "experience_level",
+            "language_requirement",
+            "visa_sponsorship",
+            "summary",
+        }
+        missing_fields = sorted(
+            field
+            for field in required_fields
+            if field not in data or data[field] is None
+        )
+        if missing_fields:
+            raise ValueError(
+                "Provider response missing required fields: "
+                + ", ".join(missing_fields)
+            )
 
         tech_stack = data.get("tech_stack")
         if isinstance(tech_stack, list):
             tech_stack = ", ".join(str(x) for x in tech_stack)
 
         return {
+            "analysis_outcome": ANALYSIS_OUTCOME_PROVIDER_SUCCESS,
             "role": str(data.get("role", "")) or "Unknown",
             "tech_stack": str(tech_stack or ""),
             "experience_level": str(data.get("experience_level", "")) or "unknown",
