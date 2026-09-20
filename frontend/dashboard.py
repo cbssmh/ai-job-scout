@@ -95,13 +95,23 @@ with st.sidebar:
     st.divider()
 
     st.subheader("Analysis")
-    analysis_limit = st.slider("Batch analysis limit", min_value=1, max_value=50, value=10, step=1)
+    analysis_limit = st.slider("Batch analysis limit", min_value=1, max_value=20, value=10, step=1)
 
     if st.button("Run Analysis Batch", use_container_width=True):
         try:
             with st.spinner("Running analysis batch..."):
                 result = run_analysis(analysis_limit)
-            st.success(f"Analyzed {len(result)} jobs")
+            completed_count = len(result.get("completed", []))
+            degraded_count = len(result.get("degraded", []))
+            failed_count = len(result.get("failed", []))
+            st.success(
+                "Analysis batch "
+                f"{result.get('status', 'unknown')}: "
+                f"completed={completed_count}, "
+                f"degraded={degraded_count}, "
+                f"failed={failed_count}, "
+                f"remaining={result.get('remaining_count', 'unknown')}"
+            )
         except Exception as e:
             st.error(f"Analysis failed: {e}")
 

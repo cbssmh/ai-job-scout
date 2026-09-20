@@ -47,7 +47,7 @@ def test_backend_workflow_stores_analysis_and_builds_schema_valid_recommendation
             ),
         )
 
-        analysis_rows = recommend_service.analyze_all_jobs(db, limit=10)
+        analysis_batch = recommend_service.analyze_all_jobs(db, limit=10)
         recommendations = recommend_service.get_recommendations_by_profile(
             db,
             RecommendationRequest(
@@ -61,7 +61,10 @@ def test_backend_workflow_stores_analysis_and_builds_schema_valid_recommendation
         analysis = db.query(JobAnalysis).filter(JobAnalysis.job_id == job.id).one()
 
         assert raw_job.description_raw == "Python FastAPI Docker backend API role."
-        assert len(analysis_rows) == 1
+        assert analysis_batch["status"] == "completed"
+        assert len(analysis_batch["completed"]) == 1
+        assert analysis_batch["degraded"] == []
+        assert analysis_batch["failed"] == []
         assert analysis.job_id == raw_job.id
         assert analysis.role == "Backend Engineer"
         assert analysis.tech_stack == "Python, FastAPI, Docker"

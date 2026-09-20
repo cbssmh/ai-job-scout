@@ -4,6 +4,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.models import Job, JobAnalysis
+from app.domain.analysis_outcome import FALLBACK_SUMMARY_PREFIX
 from app.domain.job_lifecycle import JOB_STATUS_ACTIVE, JOB_STATUS_UPDATED
 
 
@@ -11,7 +12,7 @@ class AnalysisRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_jobs_without_analysis(self, limit: int = 20) -> list[Job]:
+    def _jobs_eligible_for_analysis_query(self):
         return (
             self.db.query(Job)
             .outerjoin(JobAnalysis, Job.id == JobAnalysis.job_id)
@@ -21,11 +22,16 @@ class AnalysisRepository:
                     JobAnalysis.id.is_(None),
                     Job.status == JOB_STATUS_UPDATED,
                     Job.last_analyzed_at.is_(None),
+                    JobAnalysis.summary.like(f"{FALLBACK_SUMMARY_PREFIX}%"),
                 ),
             )
-            .limit(limit)
-            .all()
         )
+
+    def get_jobs_without_analysis(self, limit: int = 20) -> list[Job]:
+        return self._jobs_eligible_for_analysis_query().order_by(Job.id).limit(limit).all()
+
+    def count_jobs_eligible_for_analysis(self) -> int:
+        return self._jobs_eligible_for_analysis_query().count()
 
     def save_analysis(self, job: Job, analyzed: dict) -> JobAnalysis:
         existing = (

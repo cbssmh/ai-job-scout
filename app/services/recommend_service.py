@@ -1,9 +1,11 @@
 import logging
+from threading import Lock
 
 from sqlalchemy.orm import Session
 
 from app.agents.job_analyst import analyze_job_text
 from app.db.schemas import RecommendationRequest
+from app.domain.analysis_outcome import ANALYSIS_OUTCOME_DEGRADED_FALLBACK
 from app.domain.recommendation_models import RecommendationContext
 from app.recommendation.recommendation_builder import RecommendationBuilder
 from app.repository.analysis_repository import AnalysisRepository
@@ -11,44 +13,95 @@ from app.repository.recommendation_repository import RecommendationRepository
 from app.scoring.recommendation_scorer import RecommendationScorer
 
 logger = logging.getLogger(__name__)
+_analysis_execution_lock = Lock()
+
+
+class AnalysisAlreadyRunningError(RuntimeError):
+    pass
 
 
 def analyze_all_jobs(db: Session, limit: int = 20):
+    if not _analysis_execution_lock.acquire(blocking=False):
+        raise AnalysisAlreadyRunningError(
+            "Another analysis request already owns provider execution in this process."
+        )
+
+    try:
+        return _analyze_all_jobs_locked(db, limit=limit)
+    finally:
+        _analysis_execution_lock.release()
+
+
+def _analyze_all_jobs_locked(db: Session, limit: int):
     analysis_repository = AnalysisRepository(db)
     jobs = analysis_repository.get_jobs_without_analysis(limit=limit)
 
-    results = []
-    failed_count = 0
+    completed = []
+    degraded = []
+    failed = []
 
     logger.info("analysis batch started selected_count=%s limit=%s", len(jobs), limit)
 
     for job in jobs:
+        job_id = job.id
+        job_title = job.title
         try:
             analyzed = analyze_job_text(job.description_raw, job.title)
 
             row = analysis_repository.save_analysis(job, analyzed)
-            results.append(row)
+            if row.analysis_outcome == ANALYSIS_OUTCOME_DEGRADED_FALLBACK:
+                degraded.append(row)
+            else:
+                completed.append(row)
             logger.info("analysis succeeded job_id=%s title=%s", job.id, job.title)
 
         except Exception as e:
             db.rollback()
-            failed_count += 1
-            logger.exception("analysis failed job_id=%s title=%s error=%s", job.id, job.title, repr(e))
+            failed.append(
+                {
+                    "job_id": job_id,
+                    "title": job_title,
+                    "error_type": type(e).__name__,
+                    "retryable": True,
+                }
+            )
+            logger.exception("analysis failed job_id=%s title=%s error=%s", job_id, job_title, repr(e))
             logger.error(
                 "analysis batch aborted selected_count=%s success_count=%s failed_count=%s",
                 len(jobs),
-                len(results),
-                failed_count,
+                len(completed) + len(degraded),
+                len(failed),
             )
-            raise
+            break
+
+    if failed and (completed or degraded):
+        status = "partial"
+    elif failed:
+        status = "failed"
+    elif degraded:
+        status = "degraded"
+    else:
+        status = "completed"
+
+    remaining_count = analysis_repository.count_jobs_eligible_for_analysis()
 
     logger.info(
-        "analysis batch finished selected_count=%s success_count=%s failed_count=%s",
+        "analysis batch finished selected_count=%s completed_count=%s degraded_count=%s failed_count=%s remaining_count=%s",
         len(jobs),
-        len(results),
-        failed_count,
+        len(completed),
+        len(degraded),
+        len(failed),
+        remaining_count,
     )
-    return results
+    return {
+        "status": status,
+        "requested_limit": limit,
+        "selected_count": len(jobs),
+        "completed": completed,
+        "degraded": degraded,
+        "failed": failed,
+        "remaining_count": remaining_count,
+    }
 
 
 def get_all_analysis(db: Session):
