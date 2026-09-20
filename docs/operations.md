@@ -142,6 +142,11 @@ The application supports `nvidia` and `openai` through the OpenAI-compatible
 client. Current defaults are defined in `app/config.py`; provider credentials
 remain environment variables at the application boundary.
 
+Both provider clients use an explicit 30-second timeout and zero automatic
+transport retries. Analysis batch limits are restricted to 1 through 20. One
+process accepts only one active analysis request; an overlapping request
+receives HTTP 409 before provider work.
+
 For Azure, `NVIDIA_API_KEY` is mapped to the Container Apps secret
 `nvidia-api-key`, which is backed by a versionless Key Vault reference and the
 Container App system identity. No local `.env` file is used by Azure.
@@ -160,13 +165,27 @@ NVIDIA_API_KEY=<local credential>
 parsing. On failure inside that block it calls `analyze_job_text_rule_based()`,
 which extracts a limited set of role, technology, experience, language, and
 visa signals with string matching. Missing provider configuration is validated
-before the fallback block and therefore surfaces as a configuration error.
+before the fallback block and therefore appears as a structured retryable batch
+failure.
 
 The fallback summary includes the exception type:
 
 ```text
 LLM fallback reason: <ExceptionType>
 ```
+
+Fallback rows are exposed as `degraded_fallback`, remain eligible for a later
+intentional analysis request, and are separated from provider-success rows in
+the batch response. The response also reports failed jobs and remaining work.
+
+The approved access policy requires operator-only access to `POST /jobs/` and
+`POST /analysis/run`. Authentication and authorization are not yet enforced;
+their mechanism is intentionally deferred. These Phase 2B controls are locally
+verified; this runbook does not claim they are deployed to Azure. Analysis
+ownership is process-local, so cross-process and cross-replica duplicate work
+is not prevented. SQLite remains replica-local in the current cloud
+architecture, and neither rate limiting nor durable/shared persistence is
+implemented.
 
 ## Common Checks
 

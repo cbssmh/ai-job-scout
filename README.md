@@ -33,10 +33,10 @@ All five questions were validated against the deployed runtime.
 | Container delivery | `linux/amd64` image stored in Azure Container Registry and deployed to Azure Container Apps |
 | Continuous deployment | GitHub Actions uses OpenID Connect (OIDC), deploys traceable images, waits for a healthy revision, and verifies public HTTPS health |
 | Runtime secrets | NVIDIA credential stored in Azure Key Vault and delivered through a versionless Key Vault reference using managed identity |
-| Identity boundaries | GitHub deployment, ACR pull, and application runtime responsibilities remain separate and scoped |
+| Identity separation | GitHub deployment, ACR pull, and application runtime use separate identities; least-privilege remediation is not claimed here |
 | Application observability | Azure Monitor OpenTelemetry exports request, exception, dependency, duration, and W3C correlation telemetry to Application Insights |
 | Runtime proof | The final revision was Active, Healthy, Provisioned, latest-ready, and served 100% of traffic while `/health` returned HTTP 200 |
-| Regression protection | 27 automated tests passed; Docker Compose configuration and repository formatting checks also passed |
+| Regression protection | 51 automated tests passed; Docker Compose configuration and repository formatting checks also passed |
 
 ## Architecture
 
@@ -91,7 +91,7 @@ All deployed resources are in **East Asia**, the region permitted by the current
 The project uses identity and references instead of distributing reusable credentials through the delivery pipeline.
 
 - **Deployment:** GitHub Actions requests a short-lived OIDC token. The Entra federated credential is restricted to the repository's `main` branch, and the workflow has only `contents: read` and `id-token: write` GitHub permissions.
-- **Image publication and deployment:** the GitHub deployment identity has the Azure roles required for ACR push and Container Apps deployment at their intended scopes.
+- **Image publication and deployment:** the GitHub deployment identity has ACR push and Container Apps management roles. Further least-privilege refinement remains future work.
 - **Image pull:** the Container Apps environment identity pulls from ACR. Registry credentials are not embedded in the application.
 - **Runtime secret access:** the Container App's system-assigned identity has `Key Vault Secrets User` on the dedicated vault. It resolves a versionless Key Vault reference exposed to the application through its existing `NVIDIA_API_KEY` environment contract.
 - **Secret handling:** no provider credential, Azure client secret, or Application Insights connection-string value is stored in the repository or printed in the evidence documents.
@@ -157,12 +157,13 @@ Full command output, sanitized resource state, and KQL results are preserved in 
 Cloud Operations Edition operates the existing application without changing its product scope:
 
 - Greenhouse job ingestion with keyword filtering;
-- SQLite persistence through SQLAlchemy;
+- replica-local SQLite storage through SQLAlchemy;
 - content hashing for duplicate and update detection;
 - separate job and job-analysis records;
 - LLM-backed extraction through an OpenAI-compatible provider boundary;
-- deterministic rule-based fallback when LLM output is unavailable or invalid;
+- deterministic, explicitly degraded rule-based fallback when LLM output is unavailable or invalid;
 - re-analysis of changed postings;
+- bounded analysis batches with structured completed, degraded, failed, and remaining-work outcomes;
 - explainable recommendation scoring using skills, language, visa, and location signals;
 - FastAPI endpoints for jobs, analysis, recommendations, and health;
 - a Streamlit dashboard and an additional Next.js client.
@@ -232,6 +233,19 @@ docker compose config --quiet
 ```
 
 Provider credentials are optional for the automated suite because LLM failure and fallback behavior are tested without requiring a live paid call.
+
+Analysis requests accept limits from `1` through `20`. Provider calls use an
+explicit 30-second timeout with automatic SDK retries disabled, and one process
+admits only one active analysis request at a time. Rule-based fallback results
+are reported as degraded and remain eligible for a later intentional analysis
+request. These work controls do not implement authentication: the approved
+policy requires operator-only access to `POST /jobs/` and
+`POST /analysis/run`, but mechanism selection remains deferred. These Phase 2B
+controls are verified locally; this documentation does not claim they are
+deployed to Azure. The lock is process-local and does not prevent cross-process
+or cross-replica duplicate work. SQLite remains replica-local in the current
+cloud architecture; rate limiting and durable/shared persistence are not
+implemented.
 
 ## Operational Lessons
 
