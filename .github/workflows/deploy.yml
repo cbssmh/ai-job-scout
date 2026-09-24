@@ -449,6 +449,11 @@ jobs:
           patch_file="$RUNNER_TEMP/containerapp-image-patch.json"
           image_reference="${{ steps.image.outputs.reference }}"
           previous_image="${{ steps.before.outputs.image }}"
+          location="$(jq -r '.location // empty' "$app_before")"
+          [[ -n "$location" ]] || {
+            echo "The existing Container App location is unavailable." >&2
+            exit 1
+          }
 
           jq -S '
             .properties.template.containers
@@ -463,7 +468,9 @@ jobs:
           jq \
             --arg name "$PROD_CONTAINER_NAME" \
             --arg image "$image_reference" \
+            --arg location "$location" \
             '{
+              location: $location,
               properties: {
                 template: {
                   containers: (
@@ -481,8 +488,11 @@ jobs:
               }
             }' "$app_before" > "$patch_file"
 
-          jq -e '
-            (keys == ["properties"])
+          jq -e \
+            --arg location "$location" \
+            '
+            (keys == ["location", "properties"])
+            and (.location == $location)
             and (.properties | keys == ["template"])
             and (.properties.template | keys == ["containers"])
           ' "$patch_file" > /dev/null
@@ -505,7 +515,7 @@ jobs:
           patch_error="$(az rest \
             --method patch \
             --url "$app_url" \
-            --headers 'Content-Type=application/merge-patch+json' \
+            --headers 'Content-Type=application/json' \
             --body "@$patch_file" \
             --output none 2>&1)"
           patch_status=$?
@@ -515,7 +525,7 @@ jobs:
             echo "Container App PATCH failed closed; no fallback identity or permission change was attempted." >&2
             exit "$patch_status"
           fi
-          echo "The asynchronous image-only PATCH was accepted."
+          echo "The image-only PATCH was accepted (HTTP 200 or 202); continuing with bounded app/revision polling."
 
       - name: Wait for and verify the new revision
         id: revision
