@@ -1,0 +1,148 @@
+{
+  "before": {
+    "identity": {
+      "type": "SystemAssigned",
+      "principalId": "server-generated-before",
+      "tenantId": "server-generated-tenant"
+    },
+    "properties": {
+      "environmentId": "/subscriptions/example/resourceGroups/example/providers/Microsoft.App/managedEnvironments/example",
+      "workloadProfileName": "Consumption",
+      "latestRevisionName": "example--0000015",
+      "provisioningState": "Succeeded",
+      "configuration": {
+        "activeRevisionsMode": "Single",
+        "ingress": {
+          "external": true,
+          "targetPort": 8000,
+          "transport": "Auto",
+          "traffic": [
+            {
+              "latestRevision": true,
+              "revisionName": "example--0000015",
+              "weight": 100
+            }
+          ],
+          "ipSecurityRestrictions": [
+            {
+              "action": "Allow",
+              "ipAddressRange": "203.0.113.10/32",
+              "name": "operator"
+            }
+          ]
+        },
+        "registries": [
+          {
+            "server": "registry.example.invalid",
+            "identity": "system",
+            "username": "synthetic-registry-user",
+            "passwordSecretRef": "registry-password"
+          }
+        ],
+        "secrets": [
+          {
+            "name": "registry-password",
+            "value": "synthetic-secret-value-not-real"
+          }
+        ],
+        "identitySettings": [
+          {
+            "identity": "system",
+            "lifecycle": "All"
+          }
+        ],
+        "dapr": null,
+        "runtime": null,
+        "service": null,
+        "maxInactiveRevisions": 10
+      },
+      "template": {
+        "revisionSuffix": "0000015",
+        "scale": {
+          "minReplicas": 0,
+          "maxReplicas": 1,
+          "cooldownPeriod": 300,
+          "pollingInterval": 30,
+          "rules": [
+            {
+              "name": "http",
+              "http": {
+                "metadata": {
+                  "concurrentRequests": "10"
+                }
+              }
+            }
+          ]
+        },
+        "containers": [
+          {
+            "name": "api",
+            "image": "registry.example.invalid/app:old",
+            "resources": {
+              "cpu": 0.5,
+              "memory": "1Gi"
+            },
+            "env": [
+              {
+                "name": "PROVIDER_KEY",
+                "secretRef": "provider-key"
+              },
+              {
+                "name": "TELEMETRY_SETTING",
+                "value": "synthetic-literal-value-not-real"
+              }
+            ],
+            "probes": [
+              {
+                "type": "Liveness",
+                "tcpSocket": {
+                  "port": 8000
+                },
+                "periodSeconds": 10
+              },
+              {
+                "type": "Readiness",
+                "tcpSocket": {
+                  "port": 8000
+                },
+                "periodSeconds": 5
+              }
+            ],
+            "command": null,
+            "args": null
+          },
+          {
+            "name": "sidecar",
+            "image": "registry.example.invalid/sidecar:stable",
+            "resources": {
+              "cpu": 0.25,
+              "memory": "0.5Gi"
+            },
+            "env": [],
+            "probes": []
+          }
+        ],
+        "initContainers": [],
+        "volumes": null,
+        "serviceBinds": null,
+        "terminationGracePeriodSeconds": null
+      }
+    }
+  },
+  "cases": {
+    "benignNormalization": {
+      "targetImage": "registry.example.invalid/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "principalId": "server-generated-after",
+      "revisionName": "example--0000016",
+      "normalizeEmptyArrays": true,
+      "reverseUnorderedArrays": true
+    },
+    "imageOnly": {
+      "targetImage": "registry.example.invalid/app@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "protectedDrift": {
+      "targetImage": "registry.example.invalid/app@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "maxReplicas": 2
+    }
+  }
+}
