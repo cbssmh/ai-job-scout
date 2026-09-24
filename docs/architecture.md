@@ -11,7 +11,9 @@ flowchart LR
     C --> D["app.services.job_service.upsert_job"]
     D --> E[("SQLite jobs table")]
     E --> F["POST /analysis/run"]
-    F --> G["app.services.recommend_service.analyze_all_jobs"]
+    F --> Q{"PROVIDER_ANALYSIS_ENABLED?"}
+    Q -- "false" --> R["HTTP 503; no provider or repository work"]
+    Q -- "true" --> G["app.services.recommend_service.analyze_all_jobs"]
     G --> H["app.agents.job_analyst.analyze_job_text"]
     H --> I[("SQLite job_analysis table")]
     I --> J["POST /recommendations/run"]
@@ -27,20 +29,26 @@ The API can also receive jobs directly through `POST /jobs/`, which calls `creat
 1. `fetch_greenhouse_jobs()` requests Greenhouse jobs with `content=true` and keeps titles matching engineering-related keywords.
 2. `scripts/fetch_greenhouse_jobs.py` converts each item into a `JobCreate` payload.
 3. `upsert_job()` stores a new row or updates an existing row by URL and content hash.
-4. `POST /analysis/run` accepts a limit from 1 through 20 and selects active,
-   updated, or explicitly degraded jobs eligible for analysis.
-5. `analyze_job_text()` asks the selected OpenAI-compatible provider for structured JSON. The Azure runtime currently selects NVIDIA through the application default.
-6. If a configured model call, JSON parsing, or required-field validation fails,
+4. `POST /analysis/run` first checks the explicit
+   `PROVIDER_ANALYSIS_ENABLED` operational state. It defaults to `false`. When
+   disabled, the route returns a stable HTTP 503 before database selection,
+   provider client construction, credential use, fallback, or persistence.
+5. When explicitly enabled, the route accepts a limit from 1 through 20 and
+   selects active, updated, or explicitly degraded jobs eligible for analysis.
+6. `analyze_job_text()` asks the selected OpenAI-compatible provider for
+   structured JSON. Provider selection and feature availability are separate;
+   an API key does not enable the feature.
+7. If a configured model call, JSON parsing, or required-field validation fails,
    `analyze_job_text_rule_based()` returns a simpler deterministic analysis. The
    result is exposed as `degraded_fallback` and remains eligible for a later
    intentional analysis request. Missing provider configuration fails before
    that fallback block.
-7. `AnalysisRepository.save_analysis()` writes `JobAnalysis`, sets
+8. `AnalysisRepository.save_analysis()` writes `JobAnalysis`, sets
    `last_analyzed_at`, and restores updated jobs to `ACTIVE`.
-8. The analysis response separates provider-completed, degraded, and failed
+9. The analysis response separates provider-completed, degraded, and failed
    jobs and reports how much eligible work remains. Earlier per-job commits are
    preserved when a later unexpected failure stops the batch.
-9. `POST /recommendations/run` loads analyzed jobs, builds
+10. `POST /recommendations/run` loads analyzed jobs, builds
    `RecommendationContext`, scores each job, and returns sorted recommendation
    dictionaries.
 
@@ -113,6 +121,13 @@ There is no external unit-of-work abstraction yet.
 
 ## External API Failure Behavior
 
+Feature availability is checked before external-provider failure handling.
+With `PROVIDER_ANALYSIS_ENABLED=false`, `POST /analysis/run` returns HTTP 503
+without entering the database dependency or analysis service. No provider
+client is constructed, no credential is used, no provider request or
+rule-based fallback occurs, and no job or analysis lifecycle state changes.
+Read-only/public endpoints remain available.
+
 Greenhouse requests use `requests.get(..., timeout=15)` and `raise_for_status()`. Callers should expect network and HTTP exceptions.
 
 Model-call, response-parsing, and JSON-decoding failures are contained inside
@@ -176,6 +191,9 @@ The Next.js app under `web/` is an additional client. It fetches jobs and runs r
 - Durable/shared persistence is not implemented.
 - `Base.metadata.create_all()` is used instead of migrations.
 - There is no authentication or authorization.
+- Provider-backed analysis intentionally defaults to disabled until a
+  provider/model and supported production endpoint pass a separate approval
+  process.
 - Policy designates `POST /jobs/` and `POST /analysis/run` as operator-only,
   but enforcement mechanism selection remains deferred.
 - Rate limiting is not implemented.
