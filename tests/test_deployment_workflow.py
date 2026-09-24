@@ -43,3 +43,16 @@ def test_container_app_patch_remains_narrow_and_polls_after_acceptance():
     assert 'az rest --method get --url "$revision_url"' in wait_step
     assert "operation-status" not in (step + wait_step)
     assert "azure-asyncoperation" not in (step + wait_step).lower()
+
+
+def test_semantic_gate_uses_sanitized_allowlist_snapshots():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert workflow.count("scripts/containerapp_semantic_snapshot.py") == 2
+    assert '"$RUNNER_TEMP/semantic-before.json"' in workflow
+    assert '"$RUNNER_TEMP/semantic-after.json"' in workflow
+    assert 'cat "$semantic_before"' in workflow
+    assert 'cat "$semantic_after"' in workflow
+    assert 'diff --unified "$semantic_before" "$semantic_after"' in workflow
+    assert "invariant-before.json" not in workflow
+    assert "invariant-after.json" not in workflow

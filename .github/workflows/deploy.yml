@@ -282,8 +282,8 @@ jobs:
         run: |
           set -euo pipefail
           app_before="$RUNNER_TEMP/containerapp-before.json"
-          invariant_before="$RUNNER_TEMP/invariant-before.json"
-          safe_before="$RUNNER_TEMP/safe-before.json"
+          semantic_before="$RUNNER_TEMP/semantic-before.json"
+          snapshot_key="$RUNNER_TEMP/semantic-snapshot-hmac.key"
           app_url="https://management.azure.com${PROD_CONTAINER_APP_RESOURCE_ID}?api-version=${CONTAINER_APPS_API_VERSION}"
 
           az rest --method get --url "$app_url" --output json > "$app_before"
@@ -304,40 +304,13 @@ jobs:
             exit 1
           }
 
-          jq -S '{
-            configuration: {
-              activeRevisionsMode: .properties.configuration.activeRevisionsMode,
-              ingress: .properties.configuration.ingress
-            },
-            template: (
-              .properties.template
-              | del(.revisionSuffix)
-              | .containers |= (
-                  map(
-                    del(.image)
-                    | if has("env") then .env |= sort_by(.name) else . end
-                    | if has("probes") then .probes |= sort_by(.type) else . end
-                  )
-                  | sort_by(.name)
-                )
-            )
-          }' "$app_before" > "$invariant_before"
-
-          jq -S '{
-            ingress: .properties.configuration.ingress,
-            activeRevisionsMode: .properties.configuration.activeRevisionsMode,
-            scale: .properties.template.scale,
-            containers: [
-              .properties.template.containers[]
-              | {
-                  name,
-                  resources,
-                  environment: ((.env // [])
-                    | map({name, secretRef: (.secretRef // null)})
-                    | sort_by(.name))
-                }
-            ]
-          }' "$app_before" > "$safe_before"
+          umask 077
+          python3 -c 'import secrets; print(secrets.token_hex(32))' > "$snapshot_key"
+          python3 scripts/containerapp_semantic_snapshot.py \
+            --input "$app_before" \
+            --target-container "$PROD_CONTAINER_NAME" \
+            --hmac-key-file "$snapshot_key" \
+            --output "$semantic_before"
 
           previous_revision="$(jq -r '.properties.latestRevisionName' "$app_before")"
           previous_image="$(jq -r --arg name "$PROD_CONTAINER_NAME" \
@@ -639,48 +612,40 @@ jobs:
           validate_reference "$app_image" "Container App image"
           validate_reference "$revision_image" "Revision image"
 
-          jq -S '{
-            configuration: {
-              activeRevisionsMode: .properties.configuration.activeRevisionsMode,
-              ingress: .properties.configuration.ingress
-            },
-            template: (
-              .properties.template
-              | del(.revisionSuffix)
-              | .containers |= (
-                  map(
-                    del(.image)
-                    | if has("env") then .env |= sort_by(.name) else . end
-                    | if has("probes") then .probes |= sort_by(.type) else . end
-                  )
-                  | sort_by(.name)
-                )
-            )
-          }' "$app_after" > "$RUNNER_TEMP/invariant-after.json"
+          semantic_before="$RUNNER_TEMP/semantic-before.json"
+          semantic_after="$RUNNER_TEMP/semantic-after.json"
+          snapshot_key="$RUNNER_TEMP/semantic-snapshot-hmac.key"
+          python3 scripts/containerapp_semantic_snapshot.py \
+            --input "$app_after" \
+            --target-container "$PROD_CONTAINER_NAME" \
+            --hmac-key-file "$snapshot_key" \
+            --output "$semantic_after"
 
-          jq -S '{
-            ingress: .properties.configuration.ingress,
-            activeRevisionsMode: .properties.configuration.activeRevisionsMode,
-            scale: .properties.template.scale,
-            containers: [
-              .properties.template.containers[]
-              | {
-                  name,
-                  resources,
-                  environment: ((.env // [])
-                    | map({name, secretRef: (.secretRef // null)})
-                    | sort_by(.name))
-                }
-            ]
-          }' "$app_after" > "$RUNNER_TEMP/safe-after.json"
+          {
+            echo "### Sanitized semantic snapshots"
+            echo
+            echo "Sensitive values are represented only by run-scoped HMAC fingerprints."
+            echo
+            echo "<details><summary>Before deployment</summary>"
+            echo
+            echo '```json'
+            cat "$semantic_before"
+            echo '```'
+            echo "</details>"
+            echo
+            echo "<details><summary>After deployment</summary>"
+            echo
+            echo '```json'
+            cat "$semantic_after"
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if ! cmp --silent \
-            "$RUNNER_TEMP/invariant-before.json" \
-            "$RUNNER_TEMP/invariant-after.json"; then
-            echo "Container App semantics changed beyond the image." >&2
-            diff --unified \
-              "$RUNNER_TEMP/safe-before.json" \
-              "$RUNNER_TEMP/safe-after.json" || true
+            "$semantic_before" \
+            "$semantic_after"; then
+            echo "Protected Container App semantics changed beyond the target image." >&2
+            diff --unified "$semantic_before" "$semantic_after" || true
             exit 1
           fi
 
