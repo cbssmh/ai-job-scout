@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.routes_jobs import router as jobs_router
 from app.api.routes_recommend import router as analysis_router
+from app.config import Settings, get_settings
 from app.db.database import Base, get_db
 from app.db.models import Job, JobAnalysis
 from app.db.schemas import JobCreate
@@ -96,7 +97,11 @@ class ProviderWorkHarness:
             db.close()
 
 
-def build_provider_work_harness(database_path: Path) -> ProviderWorkHarness:
+def build_provider_work_harness(
+    database_path: Path,
+    *,
+    provider_analysis_enabled: bool = True,
+) -> ProviderWorkHarness:
     engine = create_engine(
         f"sqlite:///{database_path}",
         connect_args={"check_same_thread": False, "timeout": 5},
@@ -107,6 +112,10 @@ def build_provider_work_harness(database_path: Path) -> ProviderWorkHarness:
     app = FastAPI()
     app.include_router(jobs_router)
     app.include_router(analysis_router)
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        provider_analysis_enabled=provider_analysis_enabled,
+    )
 
     def override_get_db():
         db = testing_session()
