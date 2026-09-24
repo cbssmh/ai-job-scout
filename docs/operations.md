@@ -51,6 +51,7 @@ non-working placeholders. Local development loads an ignored `.env` through
 `python-dotenv` and Docker Compose:
 
 ```env
+PROVIDER_ANALYSIS_ENABLED=false
 LLM_PROVIDER=nvidia
 NVIDIA_API_KEY=your_nvidia_api_key_here
 NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
@@ -61,6 +62,11 @@ OPENAI_MODEL=gpt-4.1-mini
 
 Never commit the local `.env` or copy it into Azure. The Azure runtime obtains
 the NVIDIA credential through Key Vault and managed identity instead.
+
+`PROVIDER_ANALYSIS_ENABLED` is an explicit operational feature state. It
+defaults to `false`; a provider credential being present does not enable
+analysis. Keep the production value `false` until a provider/model and its
+production endpoint complete a separate approval process.
 
 The Next.js client can optionally use:
 
@@ -138,6 +144,25 @@ The workflow does not require API secrets because tests use fake or monkeypatche
 
 ## LLM Provider Setting
 
+Provider-backed analysis is currently fail-closed. With
+`PROVIDER_ANALYSIS_ENABLED=false`, `POST /analysis/run` returns HTTP 503 with
+this stable, non-secret response before database selection, provider client
+construction, credential use, provider calls, fallback generation, or analysis
+persistence:
+
+```json
+{
+  "detail": {
+    "code": "provider_analysis_unavailable",
+    "message": "Provider-backed analysis is currently unavailable."
+  }
+}
+```
+
+Read-only endpoints, including `GET /jobs/`, `GET /analysis/`, and health
+checks, remain available. This feature state is not authentication,
+authorization, rate limiting, fallback, or provider error handling.
+
 The application supports `nvidia` and `openai` through the OpenAI-compatible
 client. Current defaults are defined in `app/config.py`; provider credentials
 remain environment variables at the application boundary.
@@ -151,22 +176,24 @@ For Azure, `NVIDIA_API_KEY` is mapped to the Container Apps secret
 `nvidia-api-key`, which is backed by a versionless Key Vault reference and the
 Container App system identity. No local `.env` file is used by Azure.
 
-For local development, set the selected provider and corresponding credential
-in the ignored `.env`. For example, NVIDIA uses:
+Only after a provider/model is approved, explicitly enable analysis and set the
+selected provider and corresponding credential in the ignored `.env`. For
+example, a test environment using NVIDIA would use:
 
 ```text
+PROVIDER_ANALYSIS_ENABLED=true
 LLM_PROVIDER=nvidia
 NVIDIA_API_KEY=<local credential>
 ```
 
 ## LLM Fallback Behavior
 
-`analyze_job_text()` catches exceptions from the configured model call and JSON
-parsing. On failure inside that block it calls `analyze_job_text_rule_based()`,
-which extracts a limited set of role, technology, experience, language, and
-visa signals with string matching. Missing provider configuration is validated
-before the fallback block and therefore appears as a structured retryable batch
-failure.
+When provider analysis is explicitly enabled, `analyze_job_text()` catches
+exceptions from the configured model call and JSON parsing. On failure inside
+that block it calls `analyze_job_text_rule_based()`, which extracts a limited
+set of role, technology, experience, language, and visa signals with string
+matching. Missing provider configuration is validated before the fallback
+block and therefore appears as a structured retryable batch failure.
 
 The fallback summary includes the exception type:
 
