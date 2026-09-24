@@ -1,0 +1,746 @@
+name: Production deployment
+
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deployment-preflight:
+    name: deployment-preflight
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+
+    steps:
+      - name: Verify OIDC is unavailable
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || \
+                -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
+            echo "OIDC minting variables are unexpectedly available." >&2
+            exit 1
+          fi
+
+      - name: Require governed required-ci for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_CHECK_APP_ID: "15368"
+          EXPECTED_CHECK_APP_SLUG: github-actions
+          EXPECTED_CHECK_APP_OWNER: github
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Production deployment is restricted to refs/heads/main." >&2
+            exit 1
+          fi
+
+          for attempt in {1..60}; do
+            response="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=required-ci&filter=latest&per_page=100")"
+
+            expected_check="$(jq -c \
+              --argjson app_id "$EXPECTED_CHECK_APP_ID" \
+              --arg app_slug "$EXPECTED_CHECK_APP_SLUG" \
+              --arg app_owner "$EXPECTED_CHECK_APP_OWNER" \
+              --arg details_prefix "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/" \
+              '[.check_runs[]
+                | select(
+                    .name == "required-ci"
+                    and .app.id == $app_id
+                    and .app.slug == $app_slug
+                    and .app.owner.login == $app_owner
+                    and (.details_url | startswith($details_prefix))
+                  )]
+                | sort_by(.started_at)
+                | last // empty' <<< "$response")"
+
+            ignored_count="$(jq \
+              --argjson app_id "$EXPECTED_CHECK_APP_ID" \
+              '[.check_runs[]
+                | select(.name == "required-ci" and .app.id != $app_id)]
+                | length' <<< "$response")"
+
+            if (( ignored_count > 0 )); then
+              printf 'Ignoring %d required-ci check(s) from an unexpected integration.\n' \
+                "$ignored_count"
+            fi
+
+            if [[ -z "$expected_check" ]]; then
+              printf 'Attempt %d/60: governed required-ci has not appeared.\n' "$attempt"
+            else
+              status="$(jq -r '.status' <<< "$expected_check")"
+              conclusion="$(jq -r '.conclusion // "pending"' <<< "$expected_check")"
+              check_id="$(jq -r '.id' <<< "$expected_check")"
+              details_url="$(jq -r '.details_url' <<< "$expected_check")"
+              printf 'Attempt %d/60: governed required-ci id=%s status=%s conclusion=%s\n' \
+                "$attempt" "$check_id" "$status" "$conclusion"
+
+              if [[ "$status" == "completed" && "$conclusion" == "success" ]]; then
+                {
+                  echo "## Deployment preflight"
+                  echo
+                  echo "- Commit: \`$GITHUB_SHA\`"
+                  echo "- Required check: [required-ci]($details_url)"
+                  echo "- Check run ID: \`$check_id\`"
+                  echo "- GitHub App integration ID: \`$EXPECTED_CHECK_APP_ID\`"
+                  echo "- GitHub App: \`$EXPECTED_CHECK_APP_OWNER/$EXPECTED_CHECK_APP_SLUG\`"
+                  echo "- Result: \`success\`"
+                } >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+
+              if [[ "$status" == "completed" ]]; then
+                echo "Governed required-ci completed without success." >&2
+                exit 1
+              fi
+            fi
+
+            if (( attempt < 60 )); then
+              sleep 10
+            fi
+          done
+
+          echo "Governed required-ci did not succeed within 10 minutes." >&2
+          exit 1
+
+  deploy-production:
+    name: deploy-production
+    needs: deployment-preflight
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROD_ACR_LOGIN_SERVER: ${{ vars.PROD_ACR_LOGIN_SERVER }}
+      PROD_ACR_NAME: ${{ vars.PROD_ACR_NAME }}
+      PROD_AZURE_CLIENT_ID: ${{ vars.PROD_AZURE_CLIENT_ID }}
+      PROD_AZURE_RESOURCE_GROUP: ${{ vars.PROD_AZURE_RESOURCE_GROUP }}
+      PROD_AZURE_SUBSCRIPTION_ID: ${{ vars.PROD_AZURE_SUBSCRIPTION_ID }}
+      PROD_AZURE_TENANT_ID: ${{ vars.PROD_AZURE_TENANT_ID }}
+      PROD_CONTAINER_APP_NAME: ${{ vars.PROD_CONTAINER_APP_NAME }}
+      PROD_CONTAINER_APP_RESOURCE_ID: ${{ vars.PROD_CONTAINER_APP_RESOURCE_ID }}
+      PROD_CONTAINER_NAME: ${{ vars.PROD_CONTAINER_NAME }}
+      PROD_HEALTH_URL: ${{ vars.PROD_HEALTH_URL }}
+      PROD_IMAGE_REPOSITORY: ${{ vars.PROD_IMAGE_REPOSITORY }}
+      CONTAINER_APPS_API_VERSION: "2025-07-01"
+
+    steps:
+      - name: Validate production configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required=(
+            PROD_ACR_LOGIN_SERVER
+            PROD_ACR_NAME
+            PROD_AZURE_CLIENT_ID
+            PROD_AZURE_RESOURCE_GROUP
+            PROD_AZURE_SUBSCRIPTION_ID
+            PROD_AZURE_TENANT_ID
+            PROD_CONTAINER_APP_NAME
+            PROD_CONTAINER_APP_RESOURCE_ID
+            PROD_CONTAINER_NAME
+            PROD_HEALTH_URL
+            PROD_IMAGE_REPOSITORY
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing production Environment variable: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "Production deployment is restricted to refs/heads/main." >&2
+            exit 1
+          }
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "GITHUB_SHA is not a full commit SHA." >&2
+            exit 1
+          }
+          [[ "$PROD_AZURE_CLIENT_ID" == "92adfc05-b652-4b27-89a5-bd43b50c65e0" ]] || {
+            echo "PROD_AZURE_CLIENT_ID is not the approved production deployer." >&2
+            exit 1
+          }
+          [[ "$PROD_AZURE_TENANT_ID" == "26080271-1d99-47dd-a23f-502db6ef9f34" ]] || {
+            echo "PROD_AZURE_TENANT_ID is not the approved tenant." >&2
+            exit 1
+          }
+          [[ "$PROD_AZURE_SUBSCRIPTION_ID" == "d05a26b7-4017-48f1-a956-d9f919361d10" ]] || {
+            echo "PROD_AZURE_SUBSCRIPTION_ID is not the approved subscription." >&2
+            exit 1
+          }
+          [[ "$PROD_ACR_NAME" == "aijobscoutms2026" ]] || {
+            echo "PROD_ACR_NAME is not the approved registry." >&2
+            exit 1
+          }
+          [[ "$PROD_ACR_LOGIN_SERVER" == "$PROD_ACR_NAME.azurecr.io" ]] || {
+            echo "PROD_ACR_LOGIN_SERVER does not match PROD_ACR_NAME." >&2
+            exit 1
+          }
+          [[ "$PROD_IMAGE_REPOSITORY" == "ai-job-scout" ]] || {
+            echo "PROD_IMAGE_REPOSITORY is not the approved repository." >&2
+            exit 1
+          }
+          [[ "$PROD_AZURE_RESOURCE_GROUP" == "rg-ai-jobscout-dev" ]] || {
+            echo "PROD_AZURE_RESOURCE_GROUP is not the approved resource group." >&2
+            exit 1
+          }
+          [[ "$PROD_CONTAINER_APP_NAME" == "ca-ai-jobscout-dev" ]] || {
+            echo "PROD_CONTAINER_APP_NAME is not the approved app." >&2
+            exit 1
+          }
+          [[ "$PROD_CONTAINER_NAME" == "ca-ai-jobscout-dev" ]] || {
+            echo "PROD_CONTAINER_NAME is not the approved target container." >&2
+            exit 1
+          }
+          [[ "$PROD_HEALTH_URL" == "https://ca-ai-jobscout-dev.kindbay-14c42b35.eastasia.azurecontainerapps.io/health" ]] || {
+            echo "PROD_HEALTH_URL is not the approved safe health endpoint." >&2
+            exit 1
+          }
+
+          expected_resource_id="/subscriptions/$PROD_AZURE_SUBSCRIPTION_ID/resourceGroups/$PROD_AZURE_RESOURCE_GROUP/providers/Microsoft.App/containerApps/$PROD_CONTAINER_APP_NAME"
+          [[ "${PROD_CONTAINER_APP_RESOURCE_ID,,}" == "${expected_resource_id,,}" ]] || {
+            echo "PROD_CONTAINER_APP_RESOURCE_ID is inconsistent with the approved target." >&2
+            exit 1
+          }
+
+      - name: Check out exact main commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify checkout and initialize provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          checked_out_sha="$(git rev-parse HEAD)"
+          [[ "$checked_out_sha" == "$GITHUB_SHA" ]] || {
+            echo "Checked-out commit does not match GITHUB_SHA." >&2
+            exit 1
+          }
+          {
+            echo "## Production deployment provenance"
+            echo
+            echo "- Git commit: \`$GITHUB_SHA\`"
+            echo "- Workflow run ID: \`$GITHUB_RUN_ID\`"
+            echo "- Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "- Git ref: \`$GITHUB_REF\`"
+            echo "- Environment: \`production\`"
+            echo "- Intended principal: \`ai-job-scout-prod-deployer\`"
+            echo "- Intended image platform: \`linux/amd64\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log in to Azure with production OIDC
+        uses: Azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.PROD_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.PROD_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.PROD_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure context
+        shell: bash
+        run: |
+          set -euo pipefail
+          account="$(az account show --output json)"
+          [[ "$(jq -r '.id' <<< "$account")" == "$PROD_AZURE_SUBSCRIPTION_ID" ]] || {
+            echo "Azure login selected the wrong subscription." >&2
+            exit 1
+          }
+          [[ "$(jq -r '.tenantId' <<< "$account")" == "$PROD_AZURE_TENANT_ID" ]] || {
+            echo "Azure login selected the wrong tenant." >&2
+            exit 1
+          }
+          [[ "$(jq -r '.user.type' <<< "$account")" == "servicePrincipal" ]] || {
+            echo "Azure login did not produce a service-principal context." >&2
+            exit 1
+          }
+          echo "Azure OIDC login established the approved service-principal context."
+
+      - name: Capture pre-deployment state
+        id: before
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_before="$RUNNER_TEMP/containerapp-before.json"
+          invariant_before="$RUNNER_TEMP/invariant-before.json"
+          safe_before="$RUNNER_TEMP/safe-before.json"
+          app_url="https://management.azure.com${PROD_CONTAINER_APP_RESOURCE_ID}?api-version=${CONTAINER_APPS_API_VERSION}"
+
+          az rest --method get --url "$app_url" --output json > "$app_before"
+
+          target_count="$(jq --arg name "$PROD_CONTAINER_NAME" \
+            '[.properties.template.containers[] | select(.name == $name)] | length' \
+            "$app_before")"
+          [[ "$target_count" == "1" ]] || {
+            echo "The target container must occur exactly once." >&2
+            exit 1
+          }
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' "$app_before")" == "Single" ]] || {
+            echo "The Container App is not in the approved Single revision mode." >&2
+            exit 1
+          }
+          [[ "$(jq -r '.properties.template.scale.maxReplicas' "$app_before")" == "1" ]] || {
+            echo "maxReplicas is not 1 before deployment." >&2
+            exit 1
+          }
+
+          jq -S '{
+            configuration: {
+              activeRevisionsMode: .properties.configuration.activeRevisionsMode,
+              ingress: .properties.configuration.ingress
+            },
+            template: (
+              .properties.template
+              | del(.revisionSuffix)
+              | .containers |= (
+                  map(
+                    del(.image)
+                    | if has("env") then .env |= sort_by(.name) else . end
+                    | if has("probes") then .probes |= sort_by(.type) else . end
+                  )
+                  | sort_by(.name)
+                )
+            )
+          }' "$app_before" > "$invariant_before"
+
+          jq -S '{
+            ingress: .properties.configuration.ingress,
+            activeRevisionsMode: .properties.configuration.activeRevisionsMode,
+            scale: .properties.template.scale,
+            containers: [
+              .properties.template.containers[]
+              | {
+                  name,
+                  resources,
+                  environment: ((.env // [])
+                    | map({name, secretRef: (.secretRef // null)})
+                    | sort_by(.name))
+                }
+            ]
+          }' "$app_before" > "$safe_before"
+
+          previous_revision="$(jq -r '.properties.latestRevisionName' "$app_before")"
+          previous_image="$(jq -r --arg name "$PROD_CONTAINER_NAME" \
+            '.properties.template.containers[] | select(.name == $name) | .image' \
+            "$app_before")"
+          [[ -n "$previous_revision" && "$previous_revision" != "null" ]] || {
+            echo "The previous revision name is unavailable." >&2
+            exit 1
+          }
+          [[ -n "$previous_image" && "$previous_image" != "null" ]] || {
+            echo "The previous image reference is unavailable." >&2
+            exit 1
+          }
+          echo "revision=$previous_revision" >> "$GITHUB_OUTPUT"
+          echo "image=$previous_image" >> "$GITHUB_OUTPUT"
+
+      - name: Log in Docker to the approved ACR
+        shell: bash
+        run: az acr login --name "$PROD_ACR_NAME"
+
+      - name: Build, push, and resolve the immutable digest
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_tag="$PROD_ACR_LOGIN_SERVER/$PROD_IMAGE_REPOSITORY:$GITHUB_SHA"
+
+          docker build \
+            --platform linux/amd64 \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "$image_tag" \
+            .
+
+          [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image_tag")" == "linux/amd64" ]] || {
+            echo "The built image is not linux/amd64." >&2
+            exit 1
+          }
+          echo "- Built image platform verification: \`linux/amd64\`" >> "$GITHUB_STEP_SUMMARY"
+
+          docker push "$image_tag"
+
+          tag_metadata="$(az acr repository show \
+            --name "$PROD_ACR_NAME" \
+            --image "$PROD_IMAGE_REPOSITORY:$GITHUB_SHA" \
+            --output json)"
+          resolved_tag="$(jq -r '.name' <<< "$tag_metadata")"
+          digest="$(jq -r '.digest' <<< "$tag_metadata")"
+          [[ "$resolved_tag" == "$GITHUB_SHA" ]] || {
+            echo "ACR returned metadata for a different tag." >&2
+            exit 1
+          }
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "ACR returned an invalid sha256 digest." >&2
+            exit 1
+          }
+
+          digest_metadata="$(az acr repository show \
+            --name "$PROD_ACR_NAME" \
+            --image "$PROD_IMAGE_REPOSITORY@$digest" \
+            --output json)"
+          [[ "$(jq -r '.digest' <<< "$digest_metadata")" == "$digest" ]] || {
+            echo "The digest does not resolve in the exact pushed repository." >&2
+            exit 1
+          }
+
+          image_reference="$PROD_ACR_LOGIN_SERVER/$PROD_IMAGE_REPOSITORY@$digest"
+
+          previous_image="${{ steps.before.outputs.image }}"
+          expected_prefix="$PROD_ACR_LOGIN_SERVER/$PROD_IMAGE_REPOSITORY"
+          [[ "$previous_image" == "$expected_prefix:"* || \
+             "$previous_image" == "$expected_prefix@sha256:"* ]] || {
+            echo "The previous image is outside the approved repository." >&2
+            exit 1
+          }
+          if [[ "$previous_image" == *"@sha256:"* ]]; then
+            previous_reference="$previous_image"
+          else
+            previous_relative="${previous_image#${PROD_ACR_LOGIN_SERVER}/}"
+            previous_digest="$(az acr repository show \
+              --name "$PROD_ACR_NAME" \
+              --image "$previous_relative" \
+              --query digest \
+              --output tsv)"
+            [[ "$previous_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+              echo "The previous image digest could not be resolved." >&2
+              exit 1
+            }
+            previous_reference="$expected_prefix@$previous_digest"
+          fi
+
+          echo "tag=$image_tag" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "reference=$image_reference" >> "$GITHUB_OUTPUT"
+          echo "previous_reference=$previous_reference" >> "$GITHUB_OUTPUT"
+          {
+            echo "- Image tag (correlation only): \`$image_tag\`"
+            echo "- Registry digest: \`$digest\`"
+            echo "- Deployment authority: \`$image_reference\`"
+            echo "- Previous immutable image: \`$previous_reference\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Submit minimal image-only Container App patch
+        id: update
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_before="$RUNNER_TEMP/containerapp-before.json"
+          request_containers="$RUNNER_TEMP/request-containers.json"
+          patch_file="$RUNNER_TEMP/containerapp-image-patch.json"
+          image_reference="${{ steps.image.outputs.reference }}"
+          previous_image="${{ steps.before.outputs.image }}"
+
+          jq -S '
+            .properties.template.containers
+            | map(
+                if has("env") then
+                  .env |= map(if .secretRef? then del(.value) else . end)
+                else
+                  .
+                end
+              )' "$app_before" > "$request_containers"
+
+          jq \
+            --arg name "$PROD_CONTAINER_NAME" \
+            --arg image "$image_reference" \
+            '{
+              properties: {
+                template: {
+                  containers: (
+                    .properties.template.containers
+                    | map(
+                        if has("env") then
+                          .env |= map(if .secretRef? then del(.value) else . end)
+                        else
+                          .
+                        end
+                      )
+                    | map(if .name == $name then .image = $image else . end)
+                  )
+                }
+              }
+            }' "$app_before" > "$patch_file"
+
+          jq -e '
+            (keys == ["properties"])
+            and (.properties | keys == ["template"])
+            and (.properties.template | keys == ["containers"])
+          ' "$patch_file" > /dev/null
+
+          jq -S \
+            --arg name "$PROD_CONTAINER_NAME" \
+            --arg previous "$previous_image" \
+            '.properties.template.containers
+              | map(if .name == $name then .image = $previous else . end)' \
+            "$patch_file" > "$RUNNER_TEMP/request-containers-restored.json"
+          cmp --silent \
+            "$request_containers" \
+            "$RUNNER_TEMP/request-containers-restored.json" || {
+              echo "The PATCH would change more than the intended container image." >&2
+              exit 1
+            }
+
+          app_url="https://management.azure.com${PROD_CONTAINER_APP_RESOURCE_ID}?api-version=${CONTAINER_APPS_API_VERSION}"
+          set +e
+          patch_error="$(az rest \
+            --method patch \
+            --url "$app_url" \
+            --headers 'Content-Type=application/merge-patch+json' \
+            --body "@$patch_file" \
+            --output none 2>&1)"
+          patch_status=$?
+          set -e
+          if (( patch_status != 0 )); then
+            echo "$patch_error" >&2
+            echo "Container App PATCH failed closed; no fallback identity or permission change was attempted." >&2
+            exit "$patch_status"
+          fi
+          echo "The asynchronous image-only PATCH was accepted."
+
+      - name: Wait for and verify the new revision
+        id: revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_revision="${{ steps.before.outputs.revision }}"
+          expected_image="${{ steps.image.outputs.reference }}"
+          app_url="https://management.azure.com${PROD_CONTAINER_APP_RESOURCE_ID}?api-version=${CONTAINER_APPS_API_VERSION}"
+          app_after="$RUNNER_TEMP/containerapp-after.json"
+          revision_after="$RUNNER_TEMP/revision-after.json"
+
+          new_revision=""
+          for attempt in {1..60}; do
+            az rest --method get --url "$app_url" --output json > "$app_after"
+            candidate="$(jq -r '.properties.latestRevisionName // ""' "$app_after")"
+            app_state="$(jq -r '.properties.provisioningState // "Unknown"' "$app_after")"
+
+            if [[ "$app_state" == "Failed" ]]; then
+              echo "Container App provisioning entered Failed state." >&2
+              exit 1
+            fi
+
+            if [[ -n "$candidate" && "$candidate" != "$previous_revision" ]]; then
+              new_revision="$candidate"
+              revision_url="https://management.azure.com${PROD_CONTAINER_APP_RESOURCE_ID}/revisions/${new_revision}?api-version=${CONTAINER_APPS_API_VERSION}"
+              set +e
+              az rest --method get --url "$revision_url" --output json > "$revision_after"
+              revision_status=$?
+              set -e
+              if (( revision_status == 0 )); then
+                revision_provisioning="$(jq -r '.properties.provisioningState // "Unknown"' "$revision_after")"
+                revision_health="$(jq -r '.properties.healthState // "Unknown"' "$revision_after")"
+                revision_active="$(jq -r '.properties.active // false' "$revision_after")"
+                revision_traffic="$(jq -r '.properties.trafficWeight // 0' "$revision_after")"
+                latest_ready="$(jq -r '.properties.latestReadyRevisionName // ""' "$app_after")"
+                printf 'Attempt %d/60: app=%s revision=%s health=%s active=%s traffic=%s\n' \
+                  "$attempt" "$app_state" "$revision_provisioning" \
+                  "$revision_health" "$revision_active" "$revision_traffic"
+
+                if [[ "$revision_health" == "Unhealthy" || \
+                      "$revision_provisioning" == "Failed" ]]; then
+                  echo "The new revision entered a terminal failure state." >&2
+                  exit 1
+                fi
+
+                if [[ "$app_state" == "Succeeded" && \
+                      "$revision_provisioning" == "Provisioned" && \
+                      "$revision_health" == "Healthy" && \
+                      "$revision_active" == "true" && \
+                      "$revision_traffic" == "100" && \
+                      "$latest_ready" == "$new_revision" ]]; then
+                  break
+                fi
+              fi
+            else
+              printf 'Attempt %d/60: waiting for a new revision; app=%s\n' \
+                "$attempt" "$app_state"
+            fi
+
+            if (( attempt == 60 )); then
+              echo "The new revision did not become Provisioned and Healthy within 10 minutes." >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+          [[ -n "$new_revision" ]] || {
+            echo "Azure did not create a new revision." >&2
+            exit 1
+          }
+
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' "$app_after")" == "Single" ]] || {
+            echo "Revision mode changed unexpectedly." >&2
+            exit 1
+          }
+          [[ "$(jq -r '.properties.template.scale.maxReplicas' "$app_after")" == "1" ]] || {
+            echo "maxReplicas changed unexpectedly." >&2
+            exit 1
+          }
+          jq -e '
+            .properties.configuration.ingress.traffic
+            | length == 1
+              and .[0].latestRevision == true
+              and .[0].weight == 100
+          ' "$app_after" > /dev/null || {
+            echo "Ingress traffic is not 100% assigned to the latest revision." >&2
+            exit 1
+          }
+
+          app_image="$(jq -r --arg name "$PROD_CONTAINER_NAME" \
+            '.properties.template.containers[] | select(.name == $name) | .image' \
+            "$app_after")"
+          revision_image="$(jq -r --arg name "$PROD_CONTAINER_NAME" \
+            '.properties.template.containers[] | select(.name == $name) | .image' \
+            "$revision_after")"
+
+          expected_repository="${expected_image%@*}"
+          expected_digest="${expected_image#*@}"
+          validate_reference() {
+            local actual="$1"
+            local label="$2"
+            local actual_repository="${actual%@*}"
+            local actual_digest="${actual#*@}"
+            [[ "${actual_repository,,}" == "${expected_repository,,}" && \
+               "$actual_digest" == "$expected_digest" ]] || {
+              echo "$label does not reference the expected immutable digest." >&2
+              exit 1
+            }
+          }
+          validate_reference "$app_image" "Container App image"
+          validate_reference "$revision_image" "Revision image"
+
+          jq -S '{
+            configuration: {
+              activeRevisionsMode: .properties.configuration.activeRevisionsMode,
+              ingress: .properties.configuration.ingress
+            },
+            template: (
+              .properties.template
+              | del(.revisionSuffix)
+              | .containers |= (
+                  map(
+                    del(.image)
+                    | if has("env") then .env |= sort_by(.name) else . end
+                    | if has("probes") then .probes |= sort_by(.type) else . end
+                  )
+                  | sort_by(.name)
+                )
+            )
+          }' "$app_after" > "$RUNNER_TEMP/invariant-after.json"
+
+          jq -S '{
+            ingress: .properties.configuration.ingress,
+            activeRevisionsMode: .properties.configuration.activeRevisionsMode,
+            scale: .properties.template.scale,
+            containers: [
+              .properties.template.containers[]
+              | {
+                  name,
+                  resources,
+                  environment: ((.env // [])
+                    | map({name, secretRef: (.secretRef // null)})
+                    | sort_by(.name))
+                }
+            ]
+          }' "$app_after" > "$RUNNER_TEMP/safe-after.json"
+
+          if ! cmp --silent \
+            "$RUNNER_TEMP/invariant-before.json" \
+            "$RUNNER_TEMP/invariant-after.json"; then
+            echo "Container App semantics changed beyond the image." >&2
+            diff --unified \
+              "$RUNNER_TEMP/safe-before.json" \
+              "$RUNNER_TEMP/safe-after.json" || true
+            exit 1
+          fi
+
+          literal_app_match=false
+          literal_revision_match=false
+          [[ "$app_image" == "$expected_image" ]] && literal_app_match=true
+          [[ "$revision_image" == "$expected_image" ]] && literal_revision_match=true
+
+          environment_shape="$(jq -c --arg name "$PROD_CONTAINER_NAME" \
+            '.properties.template.containers[]
+              | select(.name == $name)
+              | (.env // [])
+              | map({name, secretRef: (.secretRef // null)})
+              | sort_by(.name)' "$app_after")"
+          scale_rules="$(jq -c '.properties.template.scale.rules' "$app_after")"
+
+          echo "name=$new_revision" >> "$GITHUB_OUTPUT"
+          {
+            echo "- New revision: \`$new_revision\`"
+            echo "- Revision provisioning: \`Provisioned\`"
+            echo "- Revision health: \`Healthy\`"
+            echo "- Revision traffic: \`100%\`"
+            echo "- App image literal digest match: \`$literal_app_match\`"
+            echo "- Revision image literal digest match: \`$literal_revision_match\`"
+            echo "- Active revisions mode: \`Single\`"
+            echo "- Ingress semantic comparison: \`unchanged\`"
+            echo "- minReplicas: \`$(jq -r '.properties.template.scale.minReplicas' "$app_after")\`"
+            echo "- maxReplicas: \`$(jq -r '.properties.template.scale.maxReplicas' "$app_after")\`"
+            echo "- Scale rules: \`$scale_rules\`"
+            echo "- Target container: \`$PROD_CONTAINER_NAME\`"
+            echo "- Target CPU: \`$(jq -r --arg name "$PROD_CONTAINER_NAME" '.properties.template.containers[] | select(.name == $name) | .resources.cpu' "$app_after")\`"
+            echo "- Target memory: \`$(jq -r --arg name "$PROD_CONTAINER_NAME" '.properties.template.containers[] | select(.name == $name) | .resources.memory' "$app_after")\`"
+            echo "- Environment names/secret references: \`$environment_shape\`"
+            echo "- Semantic invariant comparison: \`unchanged except image\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify the safe public health contract
+        id: health
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl \
+            --fail \
+            --silent \
+            --show-error \
+            --retry 12 \
+            --retry-delay 10 \
+            --retry-all-errors \
+            --connect-timeout 10 \
+            --max-time 30 \
+            "$PROD_HEALTH_URL")"
+          jq -e '
+            type == "object"
+            and length == 2
+            and .status == "ok"
+            and .service == "ai-job-scout-api"
+          ' <<< "$response" > /dev/null || {
+            echo "The public health response did not match the safe contract." >&2
+            exit 1
+          }
+          echo "result=success" >> "$GITHUB_OUTPUT"
+          echo "- Safe public health result: \`HTTP 2xx; expected JSON contract\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record final workflow result
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "- Workflow job result: \`${{ job.status }}\`"
+            echo "- Rollback image if separately authorized: \`${{ steps.image.outputs.previous_reference || 'not resolved' }}\`"
+            echo "- Revision: \`${{ steps.revision.outputs.name || 'not verified' }}\`"
+            echo "- Health: \`${{ steps.health.outputs.result || 'not completed' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
