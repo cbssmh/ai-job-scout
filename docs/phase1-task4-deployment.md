@@ -1,5 +1,19 @@
 # Phase 1 Task 4: Azure deployment
 
+> **Superseded historical procedure — do not run**
+>
+> This document records the original Phase 1 deployment path. It is not the
+> current deployment procedure. Running `scripts/bootstrap_github_oidc.sh`
+> would recreate retired branch-bound federation and broad Azure deployment
+> trust.
+>
+> The supported path is protected `main` → required CI → the `production`
+> GitHub Environment → environment-bound OIDC → the narrow
+> `ai-job-scout-prod-deployer` identity → dedicated-ACR `AcrPush` plus the
+> exact-target Container App deploy role → immutable digest deployment.
+> See the current [Security Model](../README.md#security-model). The original
+> material below remains only as historical evidence.
+
 ## Deployment flow
 
 A push to `main`, or a manual `workflow_dispatch`, starts
