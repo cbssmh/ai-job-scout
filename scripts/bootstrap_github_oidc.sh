@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# RETIRED_AZURE_BOOTSTRAP_GUARD: this unconditional guard must remain before
+# every Azure CLI command in this historical script.
+cat >&2 <<'MESSAGE'
+ERROR: scripts/bootstrap_github_oidc.sh is superseded and intentionally disabled.
+
+Running the historical bootstrap would recreate the retired branch-bound OIDC
+federation and broad Azure deployment trust. The supported deployment path now
+uses protected main, required CI, the production GitHub Environment,
+environment-bound OIDC, ai-job-scout-prod-deployer, dedicated-registry AcrPush,
+an exact-target Container App deploy role, and immutable image digests.
+
+See README.md#security-model for the current deployment trust model. This file
+is retained only as historical evidence and must not be used for provisioning.
+There is no supported bypass for this guard.
+MESSAGE
+exit 78
+
+# Historical implementation retained below for audit and learning purposes.
 EXPECTED_SUBSCRIPTION_ID="d05a26b7-4017-48f1-a956-d9f919361d10"
 EXPECTED_TENANT_ID="26080271-1d99-47dd-a23f-502db6ef9f34"
 RESOURCE_GROUP="rg-ai-jobscout-dev"

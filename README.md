@@ -77,9 +77,9 @@ All five questions were validated against the deployed v2.0.0 runtime.
 | --- | --- |
 | Azure foundation | Existing subscription and resource group reused with established naming, tagging, budget, and cost-governance conventions |
 | Container delivery | `linux/amd64` image stored in Azure Container Registry and deployed to Azure Container Apps |
-| Continuous deployment | GitHub Actions uses OpenID Connect, deploys traceable images, waits for a healthy revision, and verifies public HTTPS health |
+| Continuous deployment | Protected `main` enters the production GitHub Environment, uses environment-bound OIDC, deploys an immutable image digest, and verifies public HTTPS health |
 | Runtime secrets | NVIDIA credential stored in Azure Key Vault and delivered through a versionless Key Vault reference using managed identity |
-| Identity separation | GitHub deployment, ACR pull, and application runtime use separate identities; least-privilege remediation is not claimed here |
+| Identity separation | Narrow production deployment, ACR pull, and application runtime access use separate identities and resource scopes |
 | Application observability | Azure Monitor OpenTelemetry exports request, exception, dependency, duration, and W3C correlation telemetry to Application Insights |
 | Runtime proof | Final revision was Active, Healthy, Provisioned, latest-ready, served 100% of traffic, and returned HTTP 200 from `/health` |
 | Regression protection | 51 automated tests passed; Docker Compose configuration and repository formatting checks also passed |
@@ -108,11 +108,13 @@ flowchart LR
 The normal delivery path is intentionally small:
 
 ```text
-push to main
-  -> test and validate
-  -> authenticate to Azure with GitHub OIDC
+push to protected main
+  -> pass required-ci
+  -> enter the production GitHub Environment
+  -> authenticate with environment-bound GitHub OIDC
   -> build and push a linux/amd64 image to ACR
-  -> update Azure Container Apps
+  -> resolve the image to an immutable digest
+  -> update the exact target Azure Container App
   -> wait for an Active and Healthy revision
   -> verify the public HTTPS /health contract
 ```
@@ -159,9 +161,23 @@ The project uses short-lived identity and managed references instead of distribu
 
 ### Deployment identity
 
-GitHub Actions requests a short-lived OIDC token.
+The supported production trust path is:
 
-The Microsoft Entra federated credential is restricted to the repository's `main` branch, and the workflow has only the required GitHub permissions:
+```text
+protected main
+-> required-ci
+-> production GitHub Environment
+-> environment-bound GitHub OIDC
+-> ai-job-scout-prod-deployer
+-> dedicated ACR AcrPush
+-> exact-target Container App custom deploy role
+-> immutable digest deployment
+```
+
+GitHub Actions requests a short-lived OIDC token only from the `production`
+Environment. The Entra federation is bound to that Environment, while the
+Environment branch policy admits only protected `main`. The workflow retains
+only the required GitHub permissions:
 
 ```yaml
 permissions:
@@ -171,13 +187,19 @@ permissions:
 
 ### Image publication and deployment
 
-The GitHub deployment identity has the Azure roles required for:
+The `ai-job-scout-prod-deployer` identity has exactly the Azure access required
+for:
 
-- pushing images to Azure Container Registry;
-- and deploying revisions to Azure Container Apps.
+- `AcrPush` on the dedicated Azure Container Registry; and
+- the custom deploy role on the exact target Container App.
 
-These are ACR push and Container Apps management roles. Further least-privilege
-refinement remains future work; no reusable Azure client secret is used.
+The workflow resolves the built image to an immutable digest before updating
+the Container App. No reusable Azure client secret is used.
+
+The historical `ai-job-scout-gha` application and service principal, its
+branch-bound `github-main` federation, and its broad resource-group deployment
+role have been deleted. The preserved historical
+`scripts/bootstrap_github_oidc.sh` is fail-closed and must not be used.
 
 ### Image pull
 
@@ -376,7 +398,7 @@ See the [scoring system](docs/scoring-system.md) for the exact rules and example
 │   └── dashboard.py                # Streamlit dashboard
 ├── infra/
 │   └── terraform/                  # unreleased Terraform engineering addendum
-├── scripts/                        # ingestion, seed, provider, and bootstrap helpers
+├── scripts/                        # ingestion, seed, provider, and retired bootstrap reference
 ├── tests/                          # unit and workflow integration tests
 ├── web/                            # additional Next.js client
 ├── Dockerfile                      # directly executable API image
@@ -598,7 +620,7 @@ They would require new product, platform, subscription, cost, or reliability dec
 
 ### Deployment, Security, and Runtime Evidence
 
-- [Container deployment design](docs/phase1-task4-deployment.md)
+- [Historical container deployment design — superseded](docs/phase1-task4-deployment.md)
 - [Container runtime evidence](docs/phase1-runtime-evidence.md)
 - [Implemented security architecture](docs/phase2-security-architecture.md)
 - [Security runtime evidence](docs/phase2-runtime-evidence.md)
